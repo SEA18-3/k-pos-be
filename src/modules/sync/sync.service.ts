@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable } from '@nestjs/common';
 import { CreateSyncDto } from './dto/create-sync.dto';
 import { UpdateSyncDto } from './dto/update-sync.dto';

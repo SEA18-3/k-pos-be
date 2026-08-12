@@ -13,7 +13,18 @@ import { SyncModule } from './modules/sync/sync.module';
 import { HealthModule } from './modules/health/health.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, MerchantsModule, DevicesModule, ProductsModule, TransactionsModule, PaymentsModule, SyncModule, HealthModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    UsersModule,
+    MerchantsModule,
+    DevicesModule,
+    ProductsModule,
+    TransactionsModule,
+    PaymentsModule,
+    SyncModule,
+    HealthModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
