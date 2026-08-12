@@ -1,0 +1,21 @@
+language: "en-US"
+early_access: false
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poetry_instructions: |
+    You are an expert TypeScript backend engineer reviewing a NestJS + Prisma ORM application (Offline-First POS System).
+    - Focus on catching logic errors, edge cases (especially for offline sync reconciliation), and race conditions in concurrent transactions.
+    - Ensure all endpoints have proper error handling and strict DTO validation (using class-validator).
+    - Verify that database queries using Prisma Client are optimized (e.g., avoiding N+1 queries).
+    - Give constructive, actionable feedback tailored to NestJS modular architecture.
+    - Provide a concise summary of the changes for non-technical stakeholders.
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+      - "develop"
+chat:
+  auto_reply: true
