@@ -58,6 +58,7 @@ jobs:
       - name: Run e2e Tests
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/test_db?schema=public
+          DIRECT_URL: postgresql://postgres:password@localhost:5432/test_db?schema=public
           JWT_SECRET: test-secret
         run: |
           npx prisma db push --accept-data-loss
