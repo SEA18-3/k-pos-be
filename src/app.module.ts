@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -14,6 +15,8 @@ import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
+    // Harus ada di paling atas agar env sudah tersedia sebelum module lain init
+    ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -29,3 +32,4 @@ import { HealthModule } from './modules/health/health.module';
   providers: [AppService],
 })
 export class AppModule {}
+
