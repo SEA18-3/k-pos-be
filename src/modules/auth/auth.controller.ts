@@ -49,7 +49,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Access token baru dikembalikan' })
   @ApiResponse({ status: 401, description: 'Refresh token tidak valid atau kadaluarsa' })
   async refresh(@Body() dto: RefreshDto) {
-    return this.authService.refresh(dto.refreshToken);
+    return this.authService.refresh(dto.refresh_token);
   }
 
   @Post('logout')
@@ -57,6 +57,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Logout dan hapus refresh token' })
   @ApiResponse({ status: 200, description: 'Logout berhasil' })
   async logout(@Body() dto: RefreshDto) {
-    return this.authService.logout(dto.refreshToken);
+    return this.authService.logout(dto.refresh_token);
   }
 }
