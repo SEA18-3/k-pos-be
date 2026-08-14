@@ -75,6 +75,7 @@ model User {
   devices       Device[]
   stockHistory  StockHistory[] 
   corrections   TransactionCorrection[] @relation("CorrectedByUser")
+  refreshTokens RefreshToken[]
 
   @@index([email])
   @@index([role])
@@ -244,7 +245,7 @@ model Transaction {
   correctionsAsNew  TransactionCorrection[] @relation("NewTransaction")
   stockHistories    StockHistory[]
 
-  @@unique([id_merchant, offline_uuid])
+  @@unique([id_device, offline_uuid])
   @@index([id_merchant])
   @@index([id_user])
   @@index([id_device])

@@ -1,11 +1,4 @@
-import {
-  IsEmail,
-  IsEnum,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '../../../common/enums/role.enum';
 
@@ -26,13 +19,13 @@ export class RegisterDto {
   password: string;
 
   @ApiPropertyOptional({
-    enum: ['KASIR', 'MERCHANT'],
-    default: 'KASIR',
-    description: 'Role hanya bisa KASIR atau MERCHANT. ADMIN dibuat via seeder.',
+    enum: ['OPERATOR', 'OWNER'],
+    default: 'OPERATOR',
+    description: 'Role hanya bisa OPERATOR atau OWNER. ADMIN dibuat via seeder.',
   })
   @IsOptional()
-  @IsEnum(['KASIR', 'MERCHANT'], {
-    message: 'Role must be KASIR or MERCHANT',
+  @IsEnum(['OPERATOR', 'OWNER'], {
+    message: 'Role must be OPERATOR or OWNER',
   })
   role?: Role;
 }

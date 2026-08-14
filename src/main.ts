@@ -17,9 +17,9 @@ async function bootstrap() {
   // 2. Global Validation Pipe
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,       // Strip properties not in DTO
+      whitelist: true, // Strip properties not in DTO
       forbidNonWhitelisted: true, // Throw error if unknown properties sent
-      transform: true,       // Auto-transform payload to DTO class instances
+      transform: true, // Auto-transform payload to DTO class instances
     }),
   );
 

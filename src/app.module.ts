@@ -32,4 +32,3 @@ import { HealthModule } from './modules/health/health.module';
   providers: [AppService],
 })
 export class AppModule {}
-
