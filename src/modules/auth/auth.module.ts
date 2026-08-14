@@ -13,9 +13,13 @@ import { PrismaModule } from '../../prisma/prisma.module';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') || 'fallback-secret',
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error('JWT_SECRET is not defined in environment variables');
+        }
+        return { secret };
+      },
     }),
   ],
   controllers: [AuthController],

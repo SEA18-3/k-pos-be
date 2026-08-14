@@ -40,11 +40,15 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   // 6. CORS
-  const corsOrigins = process.env.CORS_ORIGINS || '*';
-  app.enableCors({
-    origin: corsOrigins === '*' ? true : corsOrigins.split(','),
-    credentials: true,
-  });
+  const corsOrigins = process.env.CORS_ORIGINS;
+  if (!corsOrigins || corsOrigins === '*') {
+    app.enableCors({ origin: '*' }); // Basic CORS without credentials
+  } else {
+    app.enableCors({
+      origin: corsOrigins.split(',').map((o) => o.trim()),
+      credentials: true,
+    });
+  }
 
   // 7. Start server
   const port = process.env.PORT || 3000;

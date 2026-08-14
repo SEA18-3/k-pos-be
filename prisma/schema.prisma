@@ -76,6 +76,8 @@ model User {
   stockHistory  StockHistory[] 
   corrections   TransactionCorrection[] @relation("CorrectedByUser")
   refreshTokens RefreshToken[]
+  voidedTransactions Transaction[] @relation("VoidedTransactions")
+  verifiedPayments Payment[] @relation("VerifiedPayments")
 
   @@index([email])
   @@index([role])
@@ -125,6 +127,7 @@ model Device {
   user             User      @relation(fields: [id_user], references: [id_user], onDelete: Cascade)
   transactions     Transaction[]
   syncLogs         DeviceSyncLog[]
+  syncQueues       SyncQueue[]
 
   @@unique([id_merchant, device_id_hash])
   @@index([id_merchant])
@@ -235,6 +238,7 @@ model Transaction {
   voided_by         String?  
   void_reason       String?
 
+  voidedByUser      User?     @relation("VoidedTransactions", fields: [voided_by], references: [id_user], onDelete: Restrict)
   merchant          Merchant  @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
   user              User      @relation(fields: [id_user], references: [id_user], onDelete: Restrict)
   device            Device    @relation(fields: [id_device], references: [id_device], onDelete: Restrict)
@@ -244,6 +248,7 @@ model Transaction {
   correctionsAsOld  TransactionCorrection[] @relation("OldTransaction")
   correctionsAsNew  TransactionCorrection[] @relation("NewTransaction")
   stockHistories    StockHistory[]
+  syncQueues        SyncQueue[]
 
   @@unique([id_device, offline_uuid])
   @@index([id_merchant])
@@ -290,6 +295,7 @@ model Payment {
   
   verified_at     DateTime?
   verified_by     String? 
+  verifiedByUser  User?    @relation("VerifiedPayments", fields: [verified_by], references: [id_user], onDelete: Restrict)
   verification_note String?
   
   reconciliation_note String?
@@ -344,6 +350,9 @@ model SyncQueue {
   status          SyncStatus @default(PENDING_SYNC)
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
+
+  device          Device      @relation(fields: [id_device], references: [id_device], onDelete: Cascade)
+  transaction     Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
 
   @@index([id_device])
   @@index([id_transaction])

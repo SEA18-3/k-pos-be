@@ -32,7 +32,7 @@ async function main() {
   // 2. Create Users
   const passwordHash = await bcrypt.hash('password123', 10);
 
-  const admin = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'admin@kpos.com' },
     update: {},
     create: {
@@ -43,7 +43,7 @@ async function main() {
     },
   });
 
-  const owner = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'owner@kpos.com' },
     update: {},
     create: {
@@ -55,7 +55,7 @@ async function main() {
     },
   });
 
-  const kasir = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'kasir@kpos.com' },
     update: {},
     create: {
@@ -111,8 +111,12 @@ async function main() {
 main()
   .catch((e) => {
     console.error(e);
-    process.exit(1);
+    process.exitCode = 1;
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    try {
+      await prisma.$disconnect();
+    } finally {
+      await pool.end();
+    }
   });
