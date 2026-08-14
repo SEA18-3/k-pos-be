@@ -27,13 +27,13 @@ export class AuthService {
     // 2. Hash password
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // 3. Simpan user baru ke database
+    // 3. Simpan user baru sebagai OWNER (register = self-serve OWNER onboarding)
     const user = await this.prisma.user.create({
       data: {
         full_name: dto.full_name,
         email: dto.email,
         password: hashedPassword,
-        role: dto.role ?? Role.OPERATOR,
+        role: Role.OWNER,
       },
       select: {
         id_user: true,

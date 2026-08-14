@@ -14,8 +14,11 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Register user baru (KASIR atau MERCHANT)' })
-  @ApiResponse({ status: 201, description: 'User berhasil terdaftar' })
+  @ApiOperation({
+    summary:
+      'Register OWNER baru (self-serve onboarding). OPERATOR/ENTRY dibuat oleh OWNER via POST /users.',
+  })
+  @ApiResponse({ status: 201, description: 'OWNER berhasil terdaftar' })
   @ApiResponse({ status: 409, description: 'Email sudah terdaftar' })
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);

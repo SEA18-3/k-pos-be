@@ -9,7 +9,7 @@ Dokumen ini mendefinisikan spesifikasi lengkap seluruh endpoint REST API untuk b
 ### Base URL
 
 ```
-https://<host>/api
+https://<host>/api/v1
 ```
 
 ### Format Response
@@ -73,16 +73,85 @@ Seluruh response, baik sukses maupun error, membungkus data dalam struktur JSON 
 
 ## 1. Auth
 
-### POST /auth/login
+> Semua endpoint Auth di bawah prefix `/auth`. Endpoint `register`, `login`, `refresh`, `logout` **tidak memerlukan Bearer Token**. Hanya `GET /auth/profile` yang memerlukan token.
 
-Login untuk Kasir dan Admin. Tidak memerlukan autentikasi.
+---
+
+### POST /auth/register
+
+Mendaftarkan **OWNER** baru secara self-serve. OPERATOR dan ENTRY tidak bisa mendaftar sendiri — harus dibuat oleh OWNER via `POST /users`.
 
 **Request Body**
 
 ```json
 {
-  "username": "string",
-  "password": "string"
+  "full_name": "Budi Santoso",
+  "email": "budi@example.com",
+  "password": "password123"
+}
+```
+
+*Field `role` tidak perlu dikirim — selalu `OWNER` secara default.*
+
+**Response Sukses (201 Created)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil",
+  "data": {
+    "user": {
+      "id_user": "clxxxxx...",
+      "full_name": "Budi Santoso",
+      "email": "budi@example.com",
+      "role": "OWNER",
+      "is_active": true,
+      "created_at": "2025-08-14T10:00:00.000Z"
+    }
+  }
+}
+```
+
+**Response Error (409 Conflict)**
+
+```json
+{
+  "status": "error",
+  "message": "Email already registered",
+  "error": {
+    "code": "CONFLICT",
+    "details": null
+  }
+}
+```
+
+**Response Error (400 Bad Request)**
+
+```json
+{
+  "status": "error",
+  "message": "Validasi gagal",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "details": [
+      { "field": "password", "message": "Password must be at least 8 characters" }
+    ]
+  }
+}
+```
+
+---
+
+### POST /auth/login
+
+Login untuk semua role.
+
+**Request Body**
+
+```json
+{
+  "email": "budi@example.com",
+  "password": "password123"
 }
 ```
 
@@ -91,29 +160,31 @@ Login untuk Kasir dan Admin. Tidak memerlukan autentikasi.
 ```json
 {
   "status": "success",
-  "message": "Login berhasil",
+  "message": "Berhasil",
   "data": {
     "access_token": "eyJhbGci...",
-    "refresh_token": "dGhpcyBp...",
-    "expires_in": 900,
+    "refresh_token": "a3f9c2d1e4b5...",
     "user": {
-      "id": "usr_01j...",
-      "username": "kasir01",
-      "role": "KASIR",
-      "merchant_id": "mrc_01j..."
+      "id_user": "clxxxxx...",
+      "full_name": "Budi Santoso",
+      "email": "budi@example.com",
+      "role": "OPERATOR",
+      "is_active": true
     }
   }
 }
 ```
+
+*Catatan: `access_token` adalah JWT yang di-sign dengan payload `{ sub, email, role }`. `refresh_token` adalah opaque random hex (80 karakter), disimpan di tabel `RefreshToken`, berlaku 7 hari.*
 
 **Response Error (401 Unauthorized)**
 
 ```json
 {
   "status": "error",
-  "message": "Username atau password salah",
+  "message": "Invalid credentials",
   "error": {
-    "code": "INVALID_CREDENTIALS",
+    "code": "UNAUTHORIZED",
     "details": null
   }
 }
@@ -124,7 +195,7 @@ Login untuk Kasir dan Admin. Tidak memerlukan autentikasi.
 ```json
 {
   "status": "error",
-  "message": "Terlalu banyak percobaan login. Coba lagi dalam 60 detik.",
+  "message": "Terlalu banyak request. Coba lagi dalam beberapa saat.",
   "error": {
     "code": "RATE_LIMIT_EXCEEDED",
     "details": null
@@ -134,27 +205,28 @@ Login untuk Kasir dan Admin. Tidak memerlukan autentikasi.
 
 ---
 
-### POST /auth/refresh
+### GET /auth/profile
 
-Memperbarui access token menggunakan refresh token yang masih valid.
+Mendapatkan profil user yang sedang login. **Memerlukan Bearer Token JWT.**
 
-**Request Body**
-
-```json
-{
-  "refresh_token": "string"
-}
-```
+**Header:** `Authorization: Bearer <access_token>`
 
 **Response Sukses (200 OK)**
 
 ```json
 {
   "status": "success",
-  "message": "Token berhasil diperbarui",
+  "message": "Berhasil",
   "data": {
-    "access_token": "eyJhbGci...",
-    "expires_in": 900
+    "user": {
+      "id_user": "clxxxxx...",
+      "full_name": "Budi Santoso",
+      "email": "budi@example.com",
+      "role": "OPERATOR",
+      "is_active": true,
+      "created_at": "2025-08-14T10:00:00.000Z",
+      "updated_at": "2025-08-14T10:00:00.000Z"
+    }
   }
 }
 ```
@@ -164,9 +236,50 @@ Memperbarui access token menggunakan refresh token yang masih valid.
 ```json
 {
   "status": "error",
-  "message": "Refresh token tidak valid atau sudah kedaluwarsa",
+  "message": "Unauthorized",
   "error": {
-    "code": "TOKEN_INVALID",
+    "code": "UNAUTHORIZED",
+    "details": null
+  }
+}
+```
+
+---
+
+### POST /auth/refresh
+
+Memperbarui access token menggunakan refresh token yang masih valid. Tidak memerlukan Bearer Token.
+
+**Request Body**
+
+```json
+{
+  "refreshToken": "a3f9c2d1e4b5..."
+}
+```
+
+*Catatan: field name adalah `refreshToken` (camelCase), bukan `refresh_token`.*
+
+**Response Sukses (200 OK)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil",
+  "data": {
+    "access_token": "eyJhbGci..."
+  }
+}
+```
+
+**Response Error (401 Unauthorized)**
+
+```json
+{
+  "status": "error",
+  "message": "Invalid or expired refresh token",
+  "error": {
+    "code": "UNAUTHORIZED",
     "details": null
   }
 }
@@ -176,23 +289,27 @@ Memperbarui access token menggunakan refresh token yang masih valid.
 
 ### POST /auth/logout
 
-Mencabut (revoke) refresh token. Memerlukan autentikasi.
+Mencabut (revoke) refresh token dengan menghapusnya dari database. Tidak memerlukan Bearer Token.
 
 **Request Body**
 
 ```json
 {
-  "refresh_token": "string"
+  "refreshToken": "a3f9c2d1e4b5..."
 }
 ```
+
+*Field name: `refreshToken` (camelCase).*
 
 **Response Sukses (200 OK)**
 
 ```json
 {
   "status": "success",
-  "message": "Logout berhasil",
-  "data": null
+  "message": "Berhasil",
+  "data": {
+    "success": true
+  }
 }
 ```
 
@@ -202,59 +319,37 @@ Mencabut (revoke) refresh token. Memerlukan autentikasi.
 
 ### POST /users
 
-Membuat akun pengguna baru. Hanya dapat dilakukan oleh Admin.
+Membuat akun pengguna baru di dalam merchant. Dapat dilakukan oleh **OWNER** (hanya untuk OPERATOR/ENTRY di merchantnya sendiri) atau **ADMIN**.
+
+**Header:** `Authorization: Bearer <access_token>`
 
 **Request Body**
 
 ```json
 {
-  "username": "string",
-  "password": "string",
-  "role": "KASIR | ADMIN",
-  "merchant_id": "string"
+  "full_name": "Budi Santoso",
+  "email": "budi@toko.com",
+  "password": "password123",
+  "role": "OPERATOR"
 }
 ```
+
+*Nilai `role` yang diizinkan: `OPERATOR`, `ENTRY`, `OWNER` (ADMIN tidak bisa dibuat via endpoint ini).*
 
 **Response Sukses (201 Created)**
 
 ```json
 {
   "status": "success",
-  "message": "Pengguna berhasil dibuat",
+  "message": "Berhasil",
   "data": {
-    "id": "usr_01j...",
-    "username": "kasir02",
-    "role": "KASIR",
-    "merchant_id": "mrc_01j...",
-    "created_at": "2025-08-13T10:00:00Z"
-  }
-}
-```
-
-**Response Error (400 Bad Request)**
-
-```json
-{
-  "status": "error",
-  "message": "Data request tidak valid",
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "details": [
-      { "field": "password", "message": "Password minimal 8 karakter" }
-    ]
-  }
-}
-```
-
-**Response Error (403 Forbidden)**
-
-```json
-{
-  "status": "error",
-  "message": "Anda tidak memiliki izin untuk melakukan aksi ini",
-  "error": {
-    "code": "INSUFFICIENT_PERMISSION",
-    "details": null
+    "id_user": "clxxxxx...",
+    "full_name": "Budi Santoso",
+    "email": "budi@toko.com",
+    "role": "OPERATOR",
+    "id_merchant": "clyyyyy...",
+    "is_active": true,
+    "created_at": "2025-08-13T10:00:00.000Z"
   }
 }
 ```
@@ -263,30 +358,44 @@ Membuat akun pengguna baru. Hanya dapat dilakukan oleh Admin.
 
 ### GET /users/me
 
-Mendapatkan profil pengguna yang sedang login.
+Mendapatkan profil pengguna yang sedang login. Gunakan `GET /auth/profile` — endpoint ini mengambil data dari JWT payload + lookup database.
+
+**Header:** `Authorization: Bearer <access_token>`
 
 **Response Sukses (200 OK)**
 
 ```json
 {
   "status": "success",
-  "message": "Profil pengguna",
+  "message": "Berhasil",
   "data": {
-    "id": "usr_01j...",
-    "username": "kasir01",
-    "role": "KASIR",
-    "merchant_id": "mrc_01j..."
+    "user": {
+      "id_user": "clxxxxx...",
+      "full_name": "Budi Santoso",
+      "email": "budi@toko.com",
+      "role": "OPERATOR",
+      "id_merchant": "clyyyyy...",
+      "is_active": true,
+      "created_at": "2025-08-13T10:00:00.000Z",
+      "updated_at": "2025-08-13T10:00:00.000Z"
+    }
   }
 }
 ```
 
 ---
 
-## 3. Produk
+## 3. Produk & Inventory
+
+> Seluruh endpoint produk memerlukan autentikasi. `GET /products` dapat diakses semua role dalam satu merchant. Endpoint mutasi (POST, PATCH, DELETE) hanya untuk `OWNER` dan `ENTRY`.
+
+---
 
 ### GET /products
 
-Mendapatkan daftar produk milik merchant yang sedang login. Digunakan Kasir untuk mengisi item transaksi.
+Mendapatkan daftar produk beserta stok terkini milik merchant yang sedang login.
+
+**Header:** `Authorization: Bearer <access_token>`
 
 **Query Parameters**
 
@@ -294,22 +403,32 @@ Mendapatkan daftar produk milik merchant yang sedang login. Digunakan Kasir untu
 |---|---|---|
 | `page` | `integer` | Halaman (default: 1) |
 | `limit` | `integer` | Jumlah item per halaman (default: 50) |
-| `search` | `string` | Pencarian berdasarkan nama produk |
+| `search` | `string` | Pencarian berdasarkan `name` atau `sku` |
+| `is_active` | `boolean` | Filter produk aktif/nonaktif |
 
 **Response Sukses (200 OK)**
 
 ```json
 {
   "status": "success",
-  "message": "Daftar produk",
+  "message": "Berhasil",
   "data": {
     "items": [
       {
-        "id": "prd_01j...",
+        "id_product": "clxxxxx...",
+        "id_merchant": "clyyyyy...",
         "name": "Mie Goreng",
-        "price": 15000,
-        "stock": 200,
-        "unit": "pcs"
+        "sku": "MG-001",
+        "price": "15000.00",
+        "is_active": true,
+        "created_at": "2025-08-13T10:00:00.000Z",
+        "updated_at": "2025-08-13T10:00:00.000Z",
+        "inventory": {
+          "id_inventory": "clinvxx...",
+          "current_stock": 200,
+          "reserved": 0,
+          "last_updated": "2025-08-13T10:00:00.000Z"
+        }
       }
     ],
     "meta": {
@@ -323,11 +442,153 @@ Mendapatkan daftar produk milik merchant yang sedang login. Digunakan Kasir untu
 
 ---
 
+### POST /products
+
+Menambahkan produk baru dan otomatis membuat record `Inventory` dengan `current_stock = 0`.
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ENTRY)*
+
+**Request Body**
+
+```json
+{
+  "name": "Mie Goreng",
+  "sku": "MG-001",
+  "price": 15000
+}
+```
+
+**Response Sukses (201 Created)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil",
+  "data": {
+    "id_product": "clxxxxx...",
+    "id_merchant": "clyyyyy...",
+    "name": "Mie Goreng",
+    "sku": "MG-001",
+    "price": "15000.00",
+    "is_active": true,
+    "created_at": "2025-08-13T10:00:00.000Z",
+    "inventory": {
+      "id_inventory": "clinvxx...",
+      "current_stock": 0,
+      "reserved": 0
+    }
+  }
+}
+```
+
+---
+
+### PATCH /products/:id_product
+
+Update detail produk (nama, SKU, harga).
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ENTRY)*
+
+**Request Body** *(semua field opsional)*
+
+```json
+{
+  "name": "Mie Goreng Spesial",
+  "sku": "MG-001-S",
+  "price": 17000
+}
+```
+
+**Response Sukses (200 OK)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil",
+  "data": {
+    "id_product": "clxxxxx...",
+    "name": "Mie Goreng Spesial",
+    "sku": "MG-001-S",
+    "price": "17000.00",
+    "is_active": true,
+    "updated_at": "2025-08-13T11:00:00.000Z"
+  }
+}
+```
+
+---
+
+### POST /products/:id_product/stock
+
+Penyesuaian stok manual (*Stock Opname* / Barang Masuk / Barang Keluar). Mencatat `StockHistory` dengan `movement_type = ADJUSTMENT`.
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ENTRY)*
+
+**Request Body**
+
+```json
+{
+  "quantity": 50,
+  "notes": "Barang masuk dari supplier"
+}
+```
+
+*`quantity` positif = penambahan stok; negatif = pengurangan (misal: barang rusak/hilang).*
+
+**Response Sukses (200 OK)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil",
+  "data": {
+    "id_product": "clxxxxx...",
+    "previous_stock": 200,
+    "current_stock": 250,
+    "stock_history": {
+      "id_stock": "clstkxx...",
+      "movement_type": "ADJUSTMENT",
+      "quantity": 50,
+      "notes": "Barang masuk dari supplier",
+      "date": "2025-08-13T10:00:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+### DELETE /products/:id_product
+
+Soft delete produk (`is_active = false`). Produk tidak akan muncul di daftar kecuali difilter.
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ENTRY)*
+
+**Response Sukses (200 OK)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil",
+  "data": {
+    "id_product": "clxxxxx...",
+    "is_active": false,
+    "updated_at": "2025-08-13T12:00:00.000Z"
+  }
+}
+```
+
+---
+
 ## 4. Transaksi
 
-### POST /transactions/sync
+---
 
-Endpoint inti sinkronisasi. Menerima satu batch berisi maksimal 100 transaksi yang sebelumnya berstatus Provisional dari perangkat Kasir. Setiap transaksi diproses secara idempoten berdasarkan `transaction_id`.
+### POST /sync
+
+Endpoint inti sinkronisasi. Menerima satu batch berisi maksimal 100 transaksi *provisional* dari perangkat OPERATOR. Setiap transaksi diproses secara idempoten berdasarkan `offline_uuid`.
+
+**Header:** `Authorization: Bearer <access_token>`
 
 **Request Body**
 
@@ -335,49 +596,43 @@ Endpoint inti sinkronisasi. Menerima satu batch berisi maksimal 100 transaksi ya
 {
   "transactions": [
     {
-      "transaction_id": "string (UUID v4, generated by device)",
-      "created_at_device": "2025-08-13T07:30:00Z",
-      "payment_method": "CASH | STATIC_QRIS | TRANSFER",
+      "offline_uuid": "b6a3c1d2-...",
+      "id_device": "cldevxxx...",
+      "created_at_local": "2025-08-13T07:30:00.000Z",
+      "payment_method": "CASH",
+      "subtotal": 30000,
+      "total": 30000,
+      "notes": null,
       "items": [
         {
-          "product_id": "string",
+          "id_product": "clprdxxx...",
           "quantity": 2,
-          "price_at_sale": 15000
+          "unit_price": 15000,
+          "subtotal": 30000
         }
       ],
-      "total_amount": 30000,
-      "notes": "string | null"
+      "payment": {
+        "method": "CASH",
+        "amount": 30000,
+        "cash_received": 50000,
+        "change_amount": 20000
+      }
     }
   ]
 }
 ```
 
-**Response Sukses (200 OK)**
+*Untuk STATIC_QRIS: sertakan `qris_code`. Untuk BANK_TRANSFER: sertakan `transfer_ref`.*
 
-Diterima berarti batch telah berhasil diantrekan ke message queue untuk diproses worker. Bukan berarti seluruh transaksi sudah confirmed.
+**Response Sukses (200 OK)**
 
 ```json
 {
   "status": "success",
   "message": "Batch diterima dan sedang diproses",
   "data": {
-    "accepted": 100,
-    "queued_at": "2025-08-13T10:05:00Z"
-  }
-}
-```
-
-**Response Error (400 Bad Request)**
-
-```json
-{
-  "status": "error",
-  "message": "Struktur batch tidak valid",
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "details": [
-      { "field": "transactions[2].items", "message": "Items tidak boleh kosong" }
-    ]
+    "accepted": 1,
+    "queued_at": "2025-08-13T10:05:00.000Z"
   }
 }
 ```
@@ -386,16 +641,19 @@ Diterima berarti batch telah berhasil diantrekan ke message queue untuk diproses
 
 ### GET /transactions
 
-Mendapatkan daftar transaksi. Kasir hanya dapat melihat transaksi merchant sendiri. Admin dapat mengakses seluruh transaksi merchant yang dikelola.
+Mendapatkan daftar transaksi. OPERATOR hanya melihat transaksi merchant-nya sendiri. OWNER/ADMIN melihat seluruh transaksi merchant.
+
+**Header:** `Authorization: Bearer <access_token>`
 
 **Query Parameters**
 
 | Parameter | Tipe | Keterangan |
 |---|---|---|
-| `status` | `string` | Filter: `PROVISIONAL`, `CONFIRMED`, `VOIDED`, `CONFLICT` |
-| `device_id` | `string` | Filter berdasarkan perangkat |
+| `status` | `string` | Filter: `PENDING`, `CONFIRMED`, `VOIDED`, `FAILED` |
+| `sync_status` | `string` | Filter: `PENDING_SYNC`, `SYNCING`, `SYNCED`, `SYNC_FAILED`, `SYNC_CONFLICT` |
+| `id_device` | `string` | Filter berdasarkan `id_device` |
 | `page` | `integer` | Halaman (default: 1) |
-| `limit` | `integer` | Jumlah item per halaman (default: 20) |
+| `limit` | `integer` | Jumlah per halaman (default: 20) |
 | `start_date` | `string (ISO 8601)` | Filter awal tanggal |
 | `end_date` | `string (ISO 8601)` | Filter akhir tanggal |
 
@@ -404,18 +662,23 @@ Mendapatkan daftar transaksi. Kasir hanya dapat melihat transaksi merchant sendi
 ```json
 {
   "status": "success",
-  "message": "Daftar transaksi",
+  "message": "Berhasil",
   "data": {
     "items": [
       {
-        "id": "txn_01j...",
-        "transaction_id": "b6a3c1d2-...",
+        "id_transaction": "cltxnxxx...",
+        "id_merchant": "clmrcxxx...",
+        "id_user": "clusrxxx...",
+        "id_device": "cldevxxx...",
+        "offline_uuid": "b6a3c1d2-...",
         "status": "CONFIRMED",
-        "payment_method": "CASH",
-        "total_amount": 30000,
-        "created_at_device": "2025-08-13T07:30:00Z",
-        "confirmed_at": "2025-08-13T10:05:00Z",
-        "device_id": "dev_01j..."
+        "sync_status": "SYNCED",
+        "subtotal": "30000.00",
+        "total": "30000.00",
+        "created_at_local": "2025-08-13T07:30:00.000Z",
+        "created_at": "2025-08-13T10:05:00.000Z",
+        "confirmed_at": "2025-08-13T10:05:00.000Z",
+        "notes": null
       }
     ],
     "meta": {
@@ -429,90 +692,90 @@ Mendapatkan daftar transaksi. Kasir hanya dapat melihat transaksi merchant sendi
 
 ---
 
-### GET /transactions/:id
+### GET /transactions/:id_transaction
 
-Mendapatkan detail satu transaksi berdasarkan ID internal backend.
+Mendapatkan detail satu transaksi beserta item (`DetailTransaction`) dan pembayaran (`Payment`).
+
+**Header:** `Authorization: Bearer <access_token>`
 
 **Response Sukses (200 OK)**
 
 ```json
 {
   "status": "success",
-  "message": "Detail transaksi",
+  "message": "Berhasil",
   "data": {
-    "id": "txn_01j...",
-    "transaction_id": "b6a3c1d2-...",
+    "id_transaction": "cltxnxxx...",
+    "id_merchant": "clmrcxxx...",
+    "id_user": "clusrxxx...",
+    "id_device": "cldevxxx...",
+    "offline_uuid": "b6a3c1d2-...",
     "status": "CONFIRMED",
-    "payment_method": "CASH",
-    "items": [
+    "sync_status": "SYNCED",
+    "subtotal": "30000.00",
+    "total": "30000.00",
+    "notes": null,
+    "created_at_local": "2025-08-13T07:30:00.000Z",
+    "created_at": "2025-08-13T10:05:00.000Z",
+    "confirmed_at": "2025-08-13T10:05:00.000Z",
+    "synced_at": "2025-08-13T10:05:00.000Z",
+    "voided_at": null,
+    "voided_by": null,
+    "void_reason": null,
+    "details": [
       {
-        "product_id": "prd_01j...",
-        "product_name": "Mie Goreng",
+        "id_detail": "cldetxxx...",
+        "id_product": "clprdxxx...",
         "quantity": 2,
-        "price_at_sale": 15000,
-        "subtotal": 30000
+        "unit_price": "15000.00",
+        "subtotal": "30000.00"
       }
     ],
-    "total_amount": 30000,
-    "created_at_device": "2025-08-13T07:30:00Z",
-    "confirmed_at": "2025-08-13T10:05:00Z",
-    "device_id": "dev_01j...",
-    "merchant_id": "mrc_01j..."
-  }
-}
-```
-
-**Response Error (403 Forbidden)**
-
-```json
-{
-  "status": "error",
-  "message": "Anda tidak memiliki akses ke transaksi ini",
-  "error": {
-    "code": "INSUFFICIENT_PERMISSION",
-    "details": null
-  }
-}
-```
-
-**Response Error (404 Not Found)**
-
-```json
-{
-  "status": "error",
-  "message": "Transaksi tidak ditemukan",
-  "error": {
-    "code": "RESOURCE_NOT_FOUND",
-    "details": null
+    "payment": {
+      "id_payment": "clpaymxx...",
+      "amount": "30000.00",
+      "method": "CASH",
+      "status": "VERIFIED",
+      "cash_received": "50000.00",
+      "change_amount": "20000.00",
+      "qris_code": null,
+      "transfer_ref": null,
+      "verified_at": "2025-08-13T10:05:00.000Z",
+      "verified_by": null
+    }
   }
 }
 ```
 
 ---
 
-### PATCH /transactions/:id/void
+### PATCH /transactions/:id_transaction/void
 
-Membatalkan (void) transaksi. Hanya dapat dilakukan pada transaksi berstatus `PROVISIONAL` oleh Kasir, atau oleh Admin untuk transaksi yang belum `CONFIRMED`.
+Membatalkan transaksi. OPERATOR hanya bisa void transaksi berstatus `PENDING` milik merchantnya. OWNER/ADMIN bisa void transaksi berstatus `PENDING` atau `CONFIRMED`.
+
+**Header:** `Authorization: Bearer <access_token>`
 
 **Request Body**
 
 ```json
 {
-  "reason": "string"
+  "void_reason": "Pelanggan membatalkan pesanan"
 }
 ```
+
+*Field name sesuai schema: `void_reason`.*
 
 **Response Sukses (200 OK)**
 
 ```json
 {
   "status": "success",
-  "message": "Transaksi berhasil dibatalkan",
+  "message": "Berhasil",
   "data": {
-    "id": "txn_01j...",
+    "id_transaction": "cltxnxxx...",
     "status": "VOIDED",
-    "voided_at": "2025-08-13T10:10:00Z",
-    "voided_by": "usr_01j..."
+    "voided_at": "2025-08-13T10:10:00.000Z",
+    "voided_by": "clusrxxx..."
   }
 }
 ```
@@ -522,7 +785,7 @@ Membatalkan (void) transaksi. Hanya dapat dilakukan pada transaksi berstatus `PR
 ```json
 {
   "status": "error",
-  "message": "Transaksi yang sudah dikonfirmasi backend tidak dapat diubah oleh Kasir",
+  "message": "Transaksi yang sudah dikonfirmasi backend tidak dapat diubah oleh OPERATOR",
   "error": {
     "code": "TRANSACTION_IMMUTABLE",
     "details": null
@@ -530,103 +793,83 @@ Membatalkan (void) transaksi. Hanya dapat dilakukan pada transaksi berstatus `PR
 }
 ```
 
-**Response Error (400 Bad Request) — Transisi Status Tidak Sah**
+---
 
-```json
-{
-  "status": "error",
-  "message": "Transaksi dengan status VOIDED tidak dapat dibatalkan kembali",
-  "error": {
-    "code": "INVALID_TRANSITION",
-    "details": null
-  }
-}
-```
+## 5. Reconciliation (OWNER / ADMIN)
+
+> Seluruh endpoint ini hanya dapat diakses oleh role `OWNER` (hanya untuk merchantnya sendiri) atau `ADMIN`.
 
 ---
 
-## 5. Reconciliation (Admin Only)
+### GET /transactions?sync_status=SYNC_CONFLICT
 
-### GET /reconciliation
+Mendapatkan daftar transaksi bermasalah. Gunakan endpoint `GET /transactions` yang sama dengan query param `sync_status=SYNC_CONFLICT`.
 
-Mendapatkan daftar transaksi yang memerlukan penanganan manual (status `CONFLICT`). Hanya Admin.
+**Contoh Request**
 
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Daftar transaksi dalam antrean reconciliation",
-  "data": {
-    "items": [
-      {
-        "id": "txn_01j...",
-        "transaction_id": "b6a3c1d2-...",
-        "status": "CONFLICT",
-        "conflict_reason": "INSUFFICIENT_STOCK",
-        "payment_method": "TRANSFER",
-        "total_amount": 75000,
-        "created_at_device": "2025-08-13T07:30:00Z"
-      }
-    ],
-    "meta": {
-      "page": 1,
-      "limit": 20,
-      "total": 5
-    }
-  }
-}
 ```
+GET /api/transactions?sync_status=SYNC_CONFLICT
+```
+
+Response mengikuti format `GET /transactions` di atas dengan `sync_status: "SYNC_CONFLICT"`.
 
 ---
 
-### POST /reconciliation/:id/resolve
+### POST /transactions/:id_transaction/resolve
 
-Admin menyelesaikan satu transaksi conflict dengan keputusan: dikonfirmasi secara manual atau di-void.
+Menyelesaikan satu transaksi berstatus `SYNC_CONFLICT` secara manual.
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ADMIN)*
 
 **Request Body**
 
 ```json
 {
-  "action": "CONFIRM | VOID",
-  "notes": "string"
+  "action": "CONFIRM",
+  "notes": "Dikonfirmasi manual oleh owner karena stok sudah diisi ulang"
 }
 ```
+
+*`action`: `CONFIRM` atau `VOID`.*
 
 **Response Sukses (200 OK)**
 
 ```json
 {
   "status": "success",
-  "message": "Transaksi berhasil diselesaikan secara manual",
+  "message": "Berhasil",
   "data": {
-    "id": "txn_01j...",
+    "id_transaction": "cltxnxxx...",
     "status": "CONFIRMED",
-    "resolved_by": "usr_admin_01j...",
-    "resolved_at": "2025-08-13T11:00:00Z"
+    "sync_status": "SYNCED",
+    "confirmed_at": "2025-08-13T11:00:00.000Z"
   }
 }
 ```
 
 ---
 
-### POST /reconciliation/:id/correct
+### POST /transactions/:id_transaction/correct
 
-Admin melakukan koreksi data pada transaksi yang sudah berstatus `CONFIRMED` sebagai exception workflow. Koreksi tidak menghapus atau mengubah record asli, melainkan membuat correction entry yang terhubung.
+Koreksi transaksi yang sudah `CONFIRMED`. Membuat transaksi baru yang dihubungkan ke transaksi lama via tabel `TransactionCorrection` (*Immutable Bridge* — transaksi asli tidak diubah).
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ADMIN)*
 
 **Request Body**
 
 ```json
 {
-  "correction_notes": "string",
+  "reason": "Salah input jumlah item",
   "items": [
     {
-      "product_id": "string",
+      "id_product": "clprdxxx...",
       "quantity": 1,
-      "price_at_sale": 15000
+      "unit_price": 15000,
+      "subtotal": 15000
     }
   ],
-  "total_amount": 15000
+  "subtotal": 15000,
+  "total": 15000
 }
 ```
 
@@ -635,25 +878,14 @@ Admin melakukan koreksi data pada transaksi yang sudah berstatus `CONFIRMED` seb
 ```json
 {
   "status": "success",
-  "message": "Koreksi transaksi berhasil dicatat",
+  "message": "Berhasil",
   "data": {
-    "correction_id": "cor_01j...",
-    "original_transaction_id": "txn_01j...",
-    "corrected_by": "usr_admin_01j...",
-    "corrected_at": "2025-08-13T11:30:00Z"
-  }
-}
-```
-
-**Response Error (403 Forbidden)**
-
-```json
-{
-  "status": "error",
-  "message": "Koreksi transaksi hanya dapat dilakukan oleh Admin",
-  "error": {
-    "code": "INSUFFICIENT_PERMISSION",
-    "details": null
+    "id_correction": "clcorxxx...",
+    "id_old_transaction": "cltxnxxx...",
+    "id_new_transaction": "cltxnyyy...",
+    "corrected_by": "clusrxxx...",
+    "reason": "Salah input jumlah item",
+    "created_at": "2025-08-13T11:30:00.000Z"
   }
 }
 ```
