@@ -8,9 +8,9 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 export interface ApiResponse<T> {
-  success: boolean;
+  status: string;
+  message: string;
   data: T;
-  timestamp: string;
 }
 
 @Injectable()
@@ -23,9 +23,9 @@ export class TransformInterceptor<T>
   ): Observable<ApiResponse<T>> {
     return next.handle().pipe(
       map((data) => ({
-        success: true,
+        status: 'success',
+        message: 'OK',
         data,
-        timestamp: new Date().toISOString(),
       })),
     );
   }
