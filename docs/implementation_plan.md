@@ -17,7 +17,7 @@ Seluruh implementasi harus mengacu pada NFR yang telah didefinisikan di `docs/NF
   - **Structural:** *Data Transfer Object (DTO)* untuk standarisasi format komunikasi, serta *Decorator Pattern* (`@Injectable()`, `@Controller()`) bawaan framework.
   - **Behavioral:** *Strategy Pattern* (misal: `JwtStrategy` untuk validasi token) dan *Service Pattern* (memusatkan logika bisnis dan pemanggilan ORM Prisma di layer service.).
 - **Separation of Concerns:** Logika bisnis hanya boleh berada di layer service. Controller hanya bertanggung jawab atas parsing request dan formatting response. Tidak boleh ada logika bisnis di controller.
-- **Naming Convention:** Gunakan `camelCase` untuk variabel dan fungsi, `PascalCase` untuk class dan DTO, `SCREAMING_SNAKE_CASE` untuk konstanta dan enum.
+- **Naming Convention:** Gunakan `camelCase` untuk variabel dan fungsi lokal, serta `PascalCase` untuk class. **Pengecualian:** DTO dan properti Entity/Prisma diperbolehkan (dan sangat disarankan) menggunakan `snake_case` agar 100% identik dan transparan dengan API Contract (JSON) dan nama kolom di database. Gunakan `SCREAMING_SNAKE_CASE` untuk konstanta dan enum.
 - **Satu File, Satu Tanggung Jawab:** Setiap service, controller, dan modul harus memiliki satu tanggung jawab yang jelas dan tidak melakukan operasi di luar domain-nya.
 - **Tidak Ada Magic Number:** Semua nilai statis yang bermakna bisnis (misal: ukuran batch, durasi token) harus didefinisikan sebagai konstanta bernama atau environment variable.
 - **Structured Logging:** Setiap operasi penting (create provisional, sync attempt, validation result, conflict detected) harus menghasilkan log terstruktur menggunakan `nestjs-pino`.
@@ -154,13 +154,15 @@ Seluruh implementasi harus mengacu pada NFR yang telah didefinisikan di `docs/NF
 **Branch:** `feature/product`
 
 **To-Do:**
+- [ ] Implementasi Endpoint Upload & Storage:
+  - [ ] `POST /upload/image` - Menggunakan `@supabase/supabase-js` untuk mengunggah file `multipart/form-data` ke bucket `k-pos-images`. Validasi maksimal 5MB dan format gambar. Mengembalikan `file_url`.
 - [ ] Implementasi Endpoint Product & Inventory:
-  - [ ] `GET /products` - (Semua Role) List produk merchant + stok terkini. Query params: `page`, `limit`, `search` (by `name`/`sku`), `is_active`. Response menyertakan nested `inventory` (`current_stock`, `reserved`, `last_updated`).
-  - [ ] `POST /products` - (OWNER/ENTRY) Tambah produk & otomatis buat record `Inventory` dengan `current_stock = 0`. Request: `name`, `sku`, `price`.
-  - [ ] `PATCH /products/:id_product` - (OWNER/ENTRY) Update detail produk (`name`, `sku`, `price`). Semua field opsional.
+  - [ ] `GET /products` - (Semua Role) List produk merchant + stok terkini. Query params: `page`, `limit`, `search` (by `name`/`sku`), `is_active`. Response menyertakan nested `inventory` dan `image_url`.
+  - [ ] `POST /products` - (OWNER/ENTRY) Tambah produk & otomatis buat record `Inventory` dengan `current_stock = 0`. Request: `name`, `sku`, `price`, `image_url` (opsional).
+  - [ ] `PATCH /products/:id_product` - (OWNER/ENTRY) Update detail produk. Semua field opsional termasuk `image_url`.
   - [ ] `POST /products/:id_product/stock` - (OWNER/ENTRY) Penyesuaian stok manual. Request: `quantity` (positif/negatif), `notes`. Mencatat `StockHistory` dengan `movement_type = ADJUSTMENT`.
   - [ ] `DELETE /products/:id_product` - (OWNER/ENTRY) Soft delete produk (`is_active = false`).
-- [ ] Unit test lengkap untuk `ProductsService` dan operasi `Inventory`.
+- [ ] Unit test lengkap untuk `ProductsService` dan integrasi Storage.
 
 ### TAHAP-5: Transaction Core - TO-DO
 

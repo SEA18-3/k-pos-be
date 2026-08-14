@@ -385,7 +385,56 @@ Mendapatkan profil pengguna yang sedang login. Gunakan `GET /auth/profile` — e
 
 ---
 
-## 3. Produk & Inventory
+---
+
+## 3. Upload & Storage
+
+> Endpoint upload ini digunakan secara generik untuk mengunggah gambar (seperti gambar produk, logo merchant, dll) ke Supabase Storage. Mengembalikan URL gambar yang bisa digunakan untuk endpoint lain.
+
+---
+
+### POST /upload/image
+
+Upload file gambar (maksimal 5MB, format: `jpeg`, `png`, `webp`).
+
+**Header:**
+- `Authorization: Bearer <access_token>` *(OWNER, OPERATOR, atau ENTRY)*
+- `Content-Type: multipart/form-data`
+
+**Request Body (Form-Data)**
+
+| Key | Tipe | Keterangan |
+|---|---|---|
+| `file` | `file` | File gambar biner |
+
+**Response Sukses (201 Created)**
+
+```json
+{
+  "status": "success",
+  "message": "File berhasil diunggah",
+  "data": {
+    "file_url": "https://xxxxx.supabase.co/storage/v1/object/public/k-pos-images/products/123456789.jpg"
+  }
+}
+```
+
+**Response Error (400 Bad Request - File terlalu besar/format salah)**
+
+```json
+{
+  "status": "error",
+  "message": "Validasi gagal",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "details": "File must be a valid image and not exceed 5MB"
+  }
+}
+```
+
+---
+
+## 4. Produk & Inventory
 
 > Seluruh endpoint produk memerlukan autentikasi. `GET /products` dapat diakses semua role dalam satu merchant. Endpoint mutasi (POST, PATCH, DELETE) hanya untuk `OWNER` dan `ENTRY`.
 
@@ -420,6 +469,7 @@ Mendapatkan daftar produk beserta stok terkini milik merchant yang sedang login.
         "name": "Mie Goreng",
         "sku": "MG-001",
         "price": "15000.00",
+        "image_url": "https://storage.googleapis.com/bucket/products/mg-001.jpg",
         "is_active": true,
         "created_at": "2025-08-13T10:00:00.000Z",
         "updated_at": "2025-08-13T10:00:00.000Z",
@@ -454,7 +504,8 @@ Menambahkan produk baru dan otomatis membuat record `Inventory` dengan `current_
 {
   "name": "Mie Goreng",
   "sku": "MG-001",
-  "price": 15000
+  "price": 15000,
+  "image_url": "https://storage.googleapis.com/bucket/products/mg-001.jpg"
 }
 ```
 
@@ -470,6 +521,7 @@ Menambahkan produk baru dan otomatis membuat record `Inventory` dengan `current_
     "name": "Mie Goreng",
     "sku": "MG-001",
     "price": "15000.00",
+    "image_url": "https://storage.googleapis.com/bucket/products/mg-001.jpg",
     "is_active": true,
     "created_at": "2025-08-13T10:00:00.000Z",
     "inventory": {
@@ -495,7 +547,8 @@ Update detail produk (nama, SKU, harga).
 {
   "name": "Mie Goreng Spesial",
   "sku": "MG-001-S",
-  "price": 17000
+  "price": 17000,
+  "image_url": "https://storage.googleapis.com/bucket/products/mg-001-s.jpg"
 }
 ```
 
@@ -510,6 +563,7 @@ Update detail produk (nama, SKU, harga).
     "name": "Mie Goreng Spesial",
     "sku": "MG-001-S",
     "price": "17000.00",
+    "image_url": "https://storage.googleapis.com/bucket/products/mg-001-s.jpg",
     "is_active": true,
     "updated_at": "2025-08-13T11:00:00.000Z"
   }

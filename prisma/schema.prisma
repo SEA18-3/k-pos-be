@@ -159,6 +159,7 @@ model Product {
   name          String
   sku           String
   price         Decimal   @db.Decimal(12, 2)
+  image_url     String?   
   is_active     Boolean   @default(true)
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
