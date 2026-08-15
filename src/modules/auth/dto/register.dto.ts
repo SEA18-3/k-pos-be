@@ -16,4 +16,9 @@ export class RegisterDto {
   @IsString()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
   password: string;
+
+  @ApiProperty({ example: 'Toko Kopi Budi', description: 'Nama toko/merchant' })
+  @IsString()
+  @IsNotEmpty()
+  merchant_name: string;
 }

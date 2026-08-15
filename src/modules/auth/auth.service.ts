@@ -13,7 +13,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-  ) { }
+  ) {}
 
   async register(dto: RegisterDto) {
     // 1. Cek apakah email sudah terdaftar
@@ -30,10 +30,10 @@ export class AuthService {
     // 3. Buat Merchant & User secara atomik dalam satu transaksi database
     // Jika salah satu gagal, keduanya di-rollback otomatis
     const result = await this.prisma.$transaction(async (tx) => {
-      // 3a. Buat record Merchant baru dengan nama default
+      // 3a. Buat record Merchant baru
       const merchant = await tx.merchant.create({
         data: {
-          name: `Toko ${dto.full_name}`,
+          name: dto.merchant_name,
         },
       });
 
