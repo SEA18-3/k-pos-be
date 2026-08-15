@@ -27,25 +27,40 @@ export class AuthService {
     // 2. Hash password
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // 3. Simpan user baru sebagai OWNER (register = self-serve OWNER onboarding)
-    const user = await this.prisma.user.create({
-      data: {
-        full_name: dto.full_name,
-        email: dto.email,
-        password: hashedPassword,
-        role: Role.OWNER,
-      },
-      select: {
-        id_user: true,
-        full_name: true,
-        email: true,
-        role: true,
-        is_active: true,
-        created_at: true,
-      },
+    // 3. Buat Merchant & User secara atomik dalam satu transaksi database
+    // Jika salah satu gagal, keduanya di-rollback otomatis
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 3a. Buat record Merchant baru dengan nama default
+      const merchant = await tx.merchant.create({
+        data: {
+          name: `Toko ${dto.full_name}`,
+        },
+      });
+
+      // 3b. Buat User OWNER dan kaitkan ke merchant yang baru dibuat
+      const user = await tx.user.create({
+        data: {
+          full_name: dto.full_name,
+          email: dto.email,
+          password: hashedPassword,
+          role: Role.OWNER,
+          id_merchant: merchant.id_merchant,
+        },
+        select: {
+          id_user: true,
+          full_name: true,
+          email: true,
+          role: true,
+          id_merchant: true,
+          is_active: true,
+          created_at: true,
+        },
+      });
+
+      return { user };
     });
 
-    return { user };
+    return result;
   }
 
   async login(dto: LoginDto) {

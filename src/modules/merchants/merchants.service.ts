@@ -1,27 +1,30 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
-import { CreateMerchantDto } from './dto/create-merchant.dto';
-import { UpdateMerchantDto } from './dto/update-merchant.dto';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class MerchantsService {
-  create(createMerchantDto: CreateMerchantDto) {
-    return 'This action adds a new merchant';
-  }
+  constructor(private readonly prisma: PrismaService) { }
 
-  findAll() {
-    return `This action returns all merchants`;
-  }
+  async getMyMerchant(id_merchant: string) {
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id_merchant },
+      select: {
+        id_merchant: true,
+        name: true,
+        address: true,
+        phone: true,
+        email: true,
+        is_active: true,
+        onboarded_at: true,
+        created_at: true,
+        updated_at: true,
+      },
+    });
 
-  findOne(id: number) {
-    return `This action returns a #${id} merchant`;
-  }
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
 
-  update(id: number, updateMerchantDto: UpdateMerchantDto) {
-    return `This action updates a #${id} merchant`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} merchant`;
+    return { merchant };
   }
 }

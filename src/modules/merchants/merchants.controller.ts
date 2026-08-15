@@ -1,34 +1,28 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Request, UseGuards } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { MerchantsService } from './merchants.service';
-import { CreateMerchantDto } from './dto/create-merchant.dto';
-import { UpdateMerchantDto } from './dto/update-merchant.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import type { JwtPayload } from '../../common/decorators/current-user.decorator';
 
+@ApiTags('Merchants')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('merchants')
 export class MerchantsController {
-  constructor(private readonly merchantsService: MerchantsService) {}
+  constructor(private readonly merchantsService: MerchantsService) { }
 
-  @Post()
-  create(@Body() createMerchantDto: CreateMerchantDto) {
-    return this.merchantsService.create(createMerchantDto);
-  }
-
-  @Get()
-  findAll() {
-    return this.merchantsService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.merchantsService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateMerchantDto: UpdateMerchantDto) {
-    return this.merchantsService.update(+id, updateMerchantDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.merchantsService.remove(+id);
+  @Get('me')
+  @ApiOperation({ summary: 'Ambil profil merchant user yang sedang login (semua role)' })
+  @ApiResponse({ status: 200, description: 'Profil merchant berhasil diambil' })
+  @ApiResponse({ status: 401, description: 'Token tidak valid atau tidak ada' })
+  @ApiResponse({ status: 404, description: 'Merchant tidak ditemukan' })
+  getMyMerchant(@Request() req: { user: JwtPayload }) {
+    const id_merchant = req.user.id_merchant;
+    return this.merchantsService.getMyMerchant(id_merchant);
   }
 }
