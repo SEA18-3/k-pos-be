@@ -50,6 +50,12 @@ enum SyncStatus {
   SYNC_CONFLICT 
 }
 
+enum DeviceStatus {
+  UNPAIRED
+  PAIRED
+  REVOKED
+}
+
 enum StockMovementType {
   SALE         
   ADJUSTMENT   
@@ -116,7 +122,9 @@ model Device {
   id_merchant      String
   id_user          String
   name             String    
-  device_id_hash   String    @unique 
+  device_id_hash   String?      
+  pairing_code     String?      @unique
+  status           DeviceStatus @default(UNPAIRED)
   last_online_at   DateTime?
   last_sync_at     DateTime?
   is_active        Boolean   @default(true)

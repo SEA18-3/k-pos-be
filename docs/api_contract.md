@@ -387,7 +387,138 @@ Mendapatkan profil pengguna yang sedang login. Gunakan `GET /auth/profile` — e
 
 ---
 
-## 3. Upload & Storage
+## 3. Device Pairing & Management
+
+> Endpoint untuk manajemen perangkat kasir. Hanya `OWNER` yang dapat mendaftarkan dan menghapus perangkat. Endpoint `/devices/pair` dapat diakses secara publik (tanpa token) oleh aplikasi kasir.
+
+---
+
+### POST /devices
+
+Mendaftarkan perangkat baru dan meng-*generate* kode pairing 6 digit.
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
+
+**Request Body**
+
+```json
+{
+  "name": "Tablet Kasir Depan"
+}
+```
+
+**Response Sukses (201 Created)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil mendaftarkan perangkat",
+  "data": {
+    "id_device": "cldevxxx...",
+    "name": "Tablet Kasir Depan",
+    "pairing_code": "482910",
+    "status": "UNPAIRED",
+    "created_at": "2025-08-14T10:00:00.000Z"
+  }
+}
+```
+
+---
+
+### POST /devices/pair
+
+Melakukan *pairing* dari perangkat fisik. Mengunci `hardware_id` ke perangkat yang didaftarkan.
+
+**Header:** Tidak wajib *(Public Endpoint)*
+
+**Request Body**
+
+```json
+{
+  "pairing_code": "482910",
+  "hardware_id": "uuid-atau-android-id-unik-disini"
+}
+```
+
+**Response Sukses (200 OK)**
+
+```json
+{
+  "status": "success",
+  "message": "Perangkat berhasil dipairing",
+  "data": {
+    "id_device": "cldevxxx...",
+    "status": "PAIRED"
+  }
+}
+```
+
+**Response Error (404/400) — Kode salah/kadaluwarsa**
+
+```json
+{
+  "status": "error",
+  "message": "Invalid pairing code or device already paired",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "details": null
+  }
+}
+```
+
+---
+
+### GET /devices
+
+Mendapatkan daftar perangkat milik merchant.
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
+
+**Response Sukses (200 OK)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil",
+  "data": {
+    "items": [
+      {
+        "id_device": "cldevxxx...",
+        "name": "Tablet Kasir Depan",
+        "status": "PAIRED",
+        "last_online_at": "2025-08-14T10:30:00.000Z",
+        "created_at": "2025-08-14T10:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### DELETE /devices/:id_device
+
+Mencabut akses (*revoke*) dan men-soft delete perangkat.
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
+
+**Response Sukses (200 OK)**
+
+```json
+{
+  "status": "success",
+  "message": "Perangkat berhasil dihapus",
+  "data": {
+    "id_device": "cldevxxx...",
+    "status": "REVOKED",
+    "is_active": false
+  }
+}
+```
+
+---
+
+## 4. Upload & Storage
 
 > Endpoint upload ini digunakan secara generik untuk mengunggah gambar (seperti gambar produk, logo merchant, dll) ke Supabase Storage. Mengembalikan URL gambar yang bisa digunakan untuk endpoint lain.
 
@@ -434,7 +565,7 @@ Upload file gambar (maksimal 5MB, format: `jpeg`, `png`, `webp`).
 
 ---
 
-## 4. Produk & Inventory
+## 5. Produk & Inventory
 
 > Seluruh endpoint produk memerlukan autentikasi. `GET /products` dapat diakses semua role dalam satu merchant. Endpoint mutasi (POST, PATCH, DELETE) hanya untuk `OWNER` dan `ENTRY`.
 
@@ -634,7 +765,7 @@ Soft delete produk (`is_active = false`). Produk tidak akan muncul di daftar kec
 
 ---
 
-## 4. Transaksi
+## 6. Transaksi
 
 ---
 
@@ -849,7 +980,7 @@ Membatalkan transaksi. OPERATOR hanya bisa void transaksi berstatus `PENDING` mi
 
 ---
 
-## 5. Reconciliation (OWNER / ADMIN)
+## 7. Reconciliation (OWNER / ADMIN)
 
 > Seluruh endpoint ini hanya dapat diakses oleh role `OWNER` (hanya untuk merchantnya sendiri) atau `ADMIN`.
 
@@ -946,7 +1077,7 @@ Koreksi transaksi yang sudah `CONFIRMED`. Membuat transaksi baru yang dihubungka
 
 ---
 
-## 6. Health Check
+## 8. Health Check
 
 ### GET /health
 
