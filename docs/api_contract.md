@@ -87,7 +87,8 @@ Mendaftarkan **OWNER** baru secara self-serve. OPERATOR dan ENTRY tidak bisa men
 {
   "full_name": "Budi Santoso",
   "email": "budi@example.com",
-  "password": "password123"
+  "password": "password123",
+  "merchant_name": "Toko Kopi Budi"
 }
 ```
 
@@ -315,7 +316,40 @@ Mencabut (revoke) refresh token dengan menghapusnya dari database. Tidak memerlu
 
 ---
 
-## 2. User Management
+## 2. Merchant Management
+
+> Manajemen profil toko (Merchant). Profil ini otomatis dibuatkan saat OWNER mendaftar.
+
+### GET /merchants/me
+
+Mengambil data profil merchant dari user yang sedang login.
+
+**Header:** `Authorization: Bearer <access_token>`
+
+**Response Sukses (200 OK)**
+```json
+{
+  "status": "success",
+  "message": "Merchant profile retrieved successfully",
+  "data": {
+    "merchant": {
+      "id_merchant": "clyyyyy...",
+      "name": "Toko Kopi Budi",
+      "address": null,
+      "phone": null,
+      "email": null,
+      "is_active": true,
+      "onboarded_at": "2025-08-14T10:00:00.000Z",
+      "created_at": "2025-08-14T10:00:00.000Z",
+      "updated_at": "2025-08-14T10:00:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+## 3. User Management
 
 ### POST /users
 
@@ -356,11 +390,11 @@ Membuat akun pengguna baru di dalam merchant. Dapat dilakukan oleh **OWNER** (ha
 
 ---
 
-### GET /users/me
+### GET /users
 
-Mendapatkan profil pengguna yang sedang login. Gunakan `GET /auth/profile` — endpoint ini mengambil data dari JWT payload + lookup database.
+Mengambil daftar seluruh user/staf yang berada dalam satu merchant yang sama.
 
-**Header:** `Authorization: Bearer <access_token>`
+**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
 
 **Response Sukses (200 OK)**
 
@@ -369,25 +403,60 @@ Mendapatkan profil pengguna yang sedang login. Gunakan `GET /auth/profile` — e
   "status": "success",
   "message": "Berhasil",
   "data": {
-    "user": {
-      "id_user": "clxxxxx...",
-      "full_name": "Budi Santoso",
-      "email": "budi@toko.com",
-      "role": "OPERATOR",
-      "id_merchant": "clyyyyy...",
-      "is_active": true,
-      "created_at": "2025-08-13T10:00:00.000Z",
-      "updated_at": "2025-08-13T10:00:00.000Z"
-    }
+    "items": [
+      {
+        "id_user": "clxxxxx...",
+        "full_name": "Budi Santoso",
+        "email": "budi@toko.com",
+        "role": "OPERATOR",
+        "id_merchant": "clyyyyy...",
+        "is_active": true,
+        "created_at": "2025-08-13T10:00:00.000Z",
+        "updated_at": "2025-08-13T10:00:00.000Z"
+      }
+    ]
   }
 }
 ```
 
 ---
 
+### PATCH /users/:id_user/status
+
+Mengaktifkan atau menonaktifkan akun staf (Soft Delete).
+
+**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
+
+**Request Body**
+```json
+{
+  "is_active": false
+}
+```
+
+**Response Sukses (200 OK)**
+
+```json
+{
+  "status": "success",
+  "message": "Berhasil",
+  "data": {
+    "id_user": "clxxxxx...",
+    "full_name": "Budi Santoso",
+    "email": "budi@toko.com",
+    "role": "OPERATOR",
+    "id_merchant": "clyyyyy...",
+    "is_active": false,
+    "updated_at": "2025-08-14T10:00:00.000Z"
+  }
+}
+```
+
+
+
 ---
 
-## 3. Device Pairing & Management
+## 4. Device Pairing & Management
 
 > Endpoint untuk manajemen perangkat kasir. Hanya `OWNER` yang dapat mendaftarkan dan menghapus perangkat. Endpoint `/devices/pair` dapat diakses secara publik (tanpa token) oleh aplikasi kasir.
 
@@ -518,7 +587,7 @@ Mencabut akses (*revoke*) dan men-soft delete perangkat.
 
 ---
 
-## 4. Upload & Storage
+## 5. Upload & Storage
 
 > Endpoint upload ini digunakan secara generik untuk mengunggah gambar (seperti gambar produk, logo merchant, dll) ke Supabase Storage. Mengembalikan URL gambar yang bisa digunakan untuk endpoint lain.
 
@@ -565,7 +634,7 @@ Upload file gambar (maksimal 5MB, format: `jpeg`, `png`, `webp`).
 
 ---
 
-## 5. Produk & Inventory
+## 6. Produk & Inventory
 
 > Seluruh endpoint produk memerlukan autentikasi. `GET /products` dapat diakses semua role dalam satu merchant. Endpoint mutasi (POST, PATCH, DELETE) hanya untuk `OWNER` dan `ENTRY`.
 
@@ -765,7 +834,7 @@ Soft delete produk (`is_active = false`). Produk tidak akan muncul di daftar kec
 
 ---
 
-## 6. Transaksi
+## 7. Transaksi
 
 ---
 
