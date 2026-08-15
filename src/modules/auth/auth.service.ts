@@ -13,7 +13,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-  ) {}
+  ) { }
 
   async register(dto: RegisterDto) {
     // 1. Cek apakah email sudah terdaftar
@@ -69,6 +69,7 @@ export class AuthService {
       sub: user.id_user,
       email: user.email,
       role: user.role,
+      id_merchant: user.id_merchant,
     };
     const access_token = this.jwtService.sign(payload, {
       expiresIn: (process.env.JWT_EXPIRATION_TIME || '1d') as StringValue,
