@@ -12,6 +12,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { HealthModule } from './modules/health/health.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { HealthModule } from './modules/health/health.module';
     PaymentsModule,
     SyncModule,
     HealthModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [AppService],
