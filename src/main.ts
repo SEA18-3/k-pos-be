@@ -17,9 +17,9 @@ async function bootstrap() {
   // 2. Global Validation Pipe
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,       // Strip properties not in DTO
+      whitelist: true, // Strip properties not in DTO
       forbidNonWhitelisted: true, // Throw error if unknown properties sent
-      transform: true,       // Auto-transform payload to DTO class instances
+      transform: true, // Auto-transform payload to DTO class instances
     }),
   );
 
@@ -40,11 +40,15 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   // 6. CORS
-  const corsOrigins = process.env.CORS_ORIGINS || '*';
-  app.enableCors({
-    origin: corsOrigins === '*' ? true : corsOrigins.split(','),
-    credentials: true,
-  });
+  const corsOrigins = process.env.CORS_ORIGINS;
+  if (!corsOrigins || corsOrigins === '*') {
+    app.enableCors({ origin: '*' }); // Basic CORS without credentials
+  } else {
+    app.enableCors({
+      origin: corsOrigins.split(',').map((o) => o.trim()),
+      credentials: true,
+    });
+  }
 
   // 7. Start server
   const port = process.env.PORT || 3000;

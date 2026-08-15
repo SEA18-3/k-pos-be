@@ -1,13 +1,5 @@
-import {
-  IsEmail,
-  IsEnum,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MinLength,
-} from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Role } from '../../../common/enums/role.enum';
+import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterDto {
   @ApiProperty({ example: 'Budi Santoso' })
@@ -25,14 +17,8 @@ export class RegisterDto {
   @MinLength(8, { message: 'Password must be at least 8 characters' })
   password: string;
 
-  @ApiPropertyOptional({
-    enum: ['KASIR', 'MERCHANT'],
-    default: 'KASIR',
-    description: 'Role hanya bisa KASIR atau MERCHANT. ADMIN dibuat via seeder.',
-  })
-  @IsOptional()
-  @IsEnum(['KASIR', 'MERCHANT'], {
-    message: 'Role must be KASIR or MERCHANT',
-  })
-  role?: Role;
+  @ApiProperty({ example: 'Toko Kopi Budi', description: 'Nama toko/merchant' })
+  @IsString()
+  @IsNotEmpty()
+  merchant_name: string;
 }
