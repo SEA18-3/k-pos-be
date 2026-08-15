@@ -39,9 +39,10 @@ export class ProductsService {
     return product;
   }
 
-  findAll(search?: string) {
+  findAll(user: JwtPayload, search?: string) {
     return this.prisma.product.findMany({
       where: {
+        id_merchant: user.id_merchant,
         ...(search?.trim()
           ? {
               OR: [{ name: { contains: search.trim(), mode: 'insensitive' } }],
@@ -51,9 +52,9 @@ export class ProductsService {
     });
   }
 
-  async update(productId: string, dto: UpdateProductDto, file?: MulterFile) {
+  async update(user: JwtPayload, productId: string, dto: UpdateProductDto, file?: MulterFile) {
     const product = await this.prisma.product.findFirst({
-      where: { id_product: productId },
+      where: { id_product: productId, id_merchant: user.id_merchant },
     });
 
     if (!product) {
@@ -92,12 +93,16 @@ export class ProductsService {
     return updatedProduct;
   }
 
-  async remove(productId: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { id_product: productId },
+  async remove(user: JwtPayload, productId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id_product: productId, id_merchant: user.id_merchant },
     });
 
-    if (product?.image_url) {
+    if (!product) {
+      throw new NotFoundException('Product not found or does not belong to your store.');
+    }
+
+    if (product.image_url) {
       await this.storage.deleteProductImage(product.image_url);
     }
 

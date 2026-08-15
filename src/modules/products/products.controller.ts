@@ -53,9 +53,10 @@ export class ProductsController {
     return this.productsService.create(user, createProductDto, file);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
-  findAll(@Query('search') search?: string) {
-    return this.productsService.findAll(search);
+  findAll(@CurrentUser() user: JwtPayload, @Query('search') search?: string) {
+    return this.productsService.findAll(user, search);
   }
 
   @Patch(':id')
@@ -78,15 +79,16 @@ export class ProductsController {
   )
   @ApiConsumes('multipart/form-data')
   update(
+    @CurrentUser() user: JwtPayload,
     @Param('id') productId: string,
     @Body() updateProductDto: UpdateProductDto,
     @UploadedFile() file?: MulterFile,
   ) {
-    return this.productsService.update(productId, updateProductDto, file);
+    return this.productsService.update(user, productId, updateProductDto, file);
   }
 
   @Delete(':id')
-  remove(@Param('id') productId: string) {
-    return this.productsService.remove(productId);
+  remove(@CurrentUser() user: JwtPayload, @Param('id') productId: string) {
+    return this.productsService.remove(user, productId);
   }
 }
