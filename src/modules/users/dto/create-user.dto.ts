@@ -1,10 +1,4 @@
-import {
-  IsEmail,
-  IsEnum,
-  IsNotEmpty,
-  IsString,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsString, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Role } from '../../../common/enums/role.enum';
 
@@ -27,7 +21,8 @@ export class CreateUserDto {
   @ApiProperty({
     enum: ['OPERATOR', 'ENTRY'],
     example: 'OPERATOR',
-    description: 'Role yang diizinkan: OPERATOR (kasir) atau ENTRY (staf input). OWNER & ADMIN tidak bisa dibuat via endpoint ini.',
+    description:
+      'Role yang diizinkan: OPERATOR (kasir) atau ENTRY (staf input). OWNER & ADMIN tidak bisa dibuat via endpoint ini.',
   })
   @IsEnum(['OPERATOR', 'ENTRY'], {
     message: 'Role must be OPERATOR or ENTRY',

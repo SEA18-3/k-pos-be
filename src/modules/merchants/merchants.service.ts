@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class MerchantsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async getMyMerchant(id_merchant: string) {
     const merchant = await this.prisma.merchant.findUnique({

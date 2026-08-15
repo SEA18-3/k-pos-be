@@ -12,7 +12,7 @@ import { QueryUsersDto } from './dto/query-users.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(ownerMerchantId: string, dto: CreateUserDto) {
     // 1. Cek duplikasi email
@@ -74,11 +74,7 @@ export class UsersService {
     return { items: users };
   }
 
-  async updateStatus(
-    targetUserId: string,
-    ownerMerchantId: string,
-    dto: UpdateUserStatusDto,
-  ) {
+  async updateStatus(targetUserId: string, ownerMerchantId: string, dto: UpdateUserStatusDto) {
     // 1. Cari user yang ingin diubah statusnya
     const targetUser = await this.prisma.user.findUnique({
       where: { id_user: targetUserId },
@@ -90,9 +86,7 @@ export class UsersService {
 
     // 2. Pastikan target user berada di merchant yang sama dengan si OWNER
     if (targetUser.id_merchant !== ownerMerchantId) {
-      throw new ForbiddenException(
-        'You do not have permission to modify this user',
-      );
+      throw new ForbiddenException('You do not have permission to modify this user');
     }
 
     // 3. Update status is_active

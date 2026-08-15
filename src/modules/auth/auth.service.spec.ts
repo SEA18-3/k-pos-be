@@ -18,6 +18,7 @@ describe('AuthService', () => {
   let jwtService: JwtService;
 
   const mockPrismaService = {
+    $transaction: jest.fn(),
     user: {
       findUnique: jest.fn(),
       create: jest.fn(),
@@ -52,6 +53,43 @@ describe('AuthService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('register', () => {
+    it('should throw ConflictException if email exists', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({ id_user: '1' });
+      await expect(
+        service.register({
+          full_name: 'Test',
+          email: 'test@toko.com',
+          password: 'p',
+          merchant_name: 'Toko Test',
+        }),
+      ).rejects.toThrow('Email already registered');
+    });
+
+    it('should successfully register user and merchant', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+      (prisma.$transaction as jest.Mock).mockImplementation(
+        (cb: (tx: unknown) => Promise<unknown>) => {
+          const tx = {
+            merchant: { create: jest.fn().mockResolvedValue({ id_merchant: 'm1' }) },
+            user: { create: jest.fn().mockResolvedValue({ id_user: 'u1' }) },
+          };
+          return cb(tx);
+        },
+      );
+
+      const result = await service.register({
+        full_name: 'Test',
+        email: 'test@toko.com',
+        password: 'p',
+        merchant_name: 'Toko Test',
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(result).toHaveProperty('user');
+    });
   });
 
   describe('login', () => {

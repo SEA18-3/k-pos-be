@@ -1,10 +1,5 @@
 import { Controller, Get, Request, UseGuards } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { MerchantsService } from './merchants.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import type { JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -14,7 +9,7 @@ import type { JwtPayload } from '../../common/decorators/current-user.decorator'
 @UseGuards(JwtAuthGuard)
 @Controller('merchants')
 export class MerchantsController {
-  constructor(private readonly merchantsService: MerchantsService) { }
+  constructor(private readonly merchantsService: MerchantsService) {}
 
   @Get('me')
   @ApiOperation({ summary: 'Ambil profil merchant user yang sedang login (semua role)' })
