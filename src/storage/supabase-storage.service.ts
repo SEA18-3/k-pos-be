@@ -40,11 +40,18 @@ export class SupabaseStorageService {
     return this.supabase;
   }
 
+  private extractPathFromUrl(imageUrl: string): string | null {
+    const marker = `/object/public/${this.bucket}/`;
+    const index = imageUrl.indexOf(marker);
+    if (index === -1) return null;
+    return imageUrl.slice(index + marker.length);
+  }
+
   async uploadProductImage(
     merchantId: string,
     productId: string,
     file: MulterFile,
-  ): Promise<{ imageUrl: string; imagePath: string }> {
+  ): Promise<{ imageUrl: string }> {
     if (!file) {
       throw new BadRequestException('Product image is required.');
     }
@@ -80,7 +87,6 @@ export class SupabaseStorageService {
 
     return {
       imageUrl: urlData.publicUrl,
-      imagePath: path,
     };
   }
 
@@ -129,8 +135,14 @@ export class SupabaseStorageService {
     };
   }
 
-  async deleteProductImage(imagePath: string): Promise<void> {
-    if (!imagePath) return;
+  async deleteProductImage(imageUrl: string): Promise<void> {
+    if (!imageUrl) return;
+
+    const imagePath = this.extractPathFromUrl(imageUrl);
+    if (!imagePath) {
+      this.logger.warn(`Unable to parse storage path from image URL: ${imageUrl}`);
+      return;
+    }
 
     try {
       const supabase = this.getClient();

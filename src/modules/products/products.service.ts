@@ -24,7 +24,7 @@ export class ProductsService {
     });
 
     if (file) {
-      const { imagePath, imageUrl } = await this.storage.uploadProductImage(
+      const { imageUrl } = await this.storage.uploadProductImage(
         user.id_merchant,
         product.id_product,
         file,
@@ -32,7 +32,7 @@ export class ProductsService {
 
       return this.prisma.product.update({
         where: { id_product: product.id_product },
-        data: { image_path: imagePath, image_url: imageUrl },
+        data: { image_url: imageUrl },
       });
     }
 
@@ -64,7 +64,6 @@ export class ProductsService {
       throw new BadRequestException('Price must not be negative.');
     }
 
-    let imagePath: string | undefined;
     let imageUrl: string | undefined;
 
     if (file) {
@@ -73,11 +72,10 @@ export class ProductsService {
         product.id_product,
         file,
       );
-      imagePath = result.imagePath;
       imageUrl = result.imageUrl;
 
-      if (product.image_path && product.image_path !== imagePath) {
-        await this.storage.deleteProductImage(product.image_path);
+      if (product.image_url && product.image_url !== imageUrl) {
+        await this.storage.deleteProductImage(product.image_url);
       }
     }
 
@@ -87,7 +85,6 @@ export class ProductsService {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.sku !== undefined && { sku: dto.sku }),
         ...(dto.price !== undefined && { price: dto.price }),
-        ...(imagePath !== undefined && { image_path: imagePath }),
         ...(imageUrl !== undefined && { image_url: imageUrl }),
       },
     });
@@ -100,8 +97,8 @@ export class ProductsService {
       where: { id_product: productId },
     });
 
-    if (product?.image_path) {
-      await this.storage.deleteProductImage(product.image_path);
+    if (product?.image_url) {
+      await this.storage.deleteProductImage(product.image_url);
     }
 
     return this.prisma.product.update({
