@@ -650,7 +650,7 @@ Mendapatkan daftar produk beserta stok terkini milik merchant yang sedang login.
 
 | Parameter | Tipe | Keterangan |
 |---|---|---|
-| `page` | `integer` | Halaman (default: 1) |
+| `cursor` | `string` | Cursor untuk pagination (menggunakan `id_product`) |
 | `limit` | `integer` | Jumlah item per halaman (default: 50) |
 | `search` | `string` | Pencarian berdasarkan `name` atau `sku` |
 | `is_active` | `boolean` | Filter produk aktif/nonaktif |
@@ -682,9 +682,8 @@ Mendapatkan daftar produk beserta stok terkini milik merchant yang sedang login.
       }
     ],
     "meta": {
-      "page": 1,
-      "limit": 50,
-      "total": 120
+      "next_cursor": "clprdxxx...",
+      "limit": 50
     }
   }
 }
