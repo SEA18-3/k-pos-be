@@ -848,7 +848,6 @@ Endpoint inti sinkronisasi. Menerima satu batch berisi maksimal 100 transaksi *p
       "offline_uuid": "b6a3c1d2-...",
       "id_device": "cldevxxx...",
       "created_at_local": "2025-08-13T07:30:00.000Z",
-      "payment_method": "CASH",
       "subtotal": 30000,
       "total": 30000,
       "notes": null,
@@ -870,6 +869,10 @@ Endpoint inti sinkronisasi. Menerima satu batch berisi maksimal 100 transaksi *p
   ]
 }
 ```
+
+> **Catatan Sinkronisasi (Offline-First):** 
+> - **Gagal Teknis (DLQ):** Jika payload cacat (misal: `id_product` palsu yang melanggar Foreign Key), transaksi ditolak oleh *database*, dan *Worker* melemparnya ke **RabbitMQ Dead Letter Queue (DLQ)**. Transaksi ini tidak akan muncul di `GET /transactions`.
+> - **Konflik Bisnis (SYNC_CONFLICT):** Jika data valid namun stok kurang, transaksi tetap di-*commit* ke tabel `Transaction` dengan `sync_status = SYNC_CONFLICT`. Transaksi ini **akan muncul** di `GET /transactions` dan harus direkonsiliasi oleh Owner di Tahap 7.
 
 *Untuk STATIC_QRIS: sertakan `qris_code`. Untuk BANK_TRANSFER: sertakan `transfer_ref`.*
 
@@ -1000,7 +1003,9 @@ Mendapatkan detail satu transaksi beserta item (`DetailTransaction`) dan pembaya
 
 ### PATCH /transactions/:id/void
 
-Membatalkan transaksi. Endpoint ini **HANYA** dapat membatalkan transaksi berstatus `PENDING`. Transaksi yang sudah berstatus `CONFIRMED` tidak dapat di-void melalui endpoint ini, melainkan harus melalui alur *Correction* (Tahap 7).
+Membatalkan transaksi. 
+- **Bagi Kasir (OPERATOR):** HANYA dapat membatalkan transaksi berstatus `PENDING`. Transaksi yang sudah `CONFIRMED` tidak bisa di-void oleh Kasir.
+- **Bagi OWNER / ADMIN:** Dapat membatalkan transaksi berstatus `PENDING` maupun `CONFIRMED` (berguna untuk kasus penipuan pembayaran seperti uang QRIS/Transfer yang ternyata tidak masuk rekening).
 
 **Header:** `Authorization: Bearer <access_token>`
 
