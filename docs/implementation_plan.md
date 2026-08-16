@@ -207,16 +207,24 @@ Seluruh implementasi harus mengacu pada NFR yang telah didefinisikan di `docs/NF
   - [ ] `BANK_TRANSFER`: `amount`, `transfer_ref`. Status `OPERATOR_ASSERTED` — perlu rekonsiliasi.
 - [ ] Unit test untuk logika Payment creation.
 
-### TAHAP-7: Reconciliation (OWNER/ADMIN) - TO-DO
+### TAHAP-7: Reconciliation, Exception Workflow & DLQ (OWNER/ADMIN) - TO-DO
 
-**Branch:** `feature/reconciliation`
+**Branch:** `feature/reconciliation-dlq`
 
 **To-Do:**
+- [ ] Implementasi Skema DB untuk DLQ & Exception Workflow:
+  - [ ] `prisma/schema.prisma`: Ubah `id_transaction` di `SyncQueue` menjadi opsional (`String?`) untuk mengakomodasi DLQ error yang belum punya ID transaksi.
+  - [ ] `prisma/schema.prisma`: Ubah `id_new_transaction` di `TransactionCorrection` menjadi opsional (`String?`) untuk mengakomodasi Exception Workflow (VOID) yang tidak punya transaksi pengganti.
+- [ ] Implementasi RabbitMQ DLQ Worker:
+  - [ ] Buat `dlq-consumer.service.ts` untuk menangkap pesan cacat dari `sync.dlq`.
+  - [ ] Daftarkan Microservice kedua di `main.ts` untuk mem-binding queue DLQ.
+  - [ ] Simpan pesan gagal tersebut ke tabel `SyncQueue` dengan status `SYNC_FAILED`.
 - [ ] Implementasi Endpoint Rekonsiliasi (OWNER dan ADMIN saja):
-  - [ ] Filter `GET /transactions?sync_status=SYNC_CONFLICT` - Menggunakan endpoint `GET /transactions` yang sudah ada (tidak perlu endpoint baru). OWNER hanya melihat merchant miliknya.
-  - [ ] `POST /transactions/:id_transaction/resolve` - Selesaikan konflik `SYNC_CONFLICT` secara manual. Request: `{ action: "CONFIRM" | "VOID", notes }`. Response: `{ id_transaction, status, sync_status: "SYNCED", confirmed_at }`.
-  - [ ] `POST /transactions/:id_transaction/correct` - Koreksi transaksi `CONFIRMED`. Buat *Immutable Bridge* ke `TransactionCorrection`. Request: `{ reason, items[], subtotal, total }`. Response: `{ id_correction, id_old_transaction, id_new_transaction, corrected_by, reason, created_at }`.
-- [ ] Unit test untuk skenario Exception/Reconciliation Workflow.
+  - [ ] Filter `GET /transactions?sync_status=SYNC_CONFLICT` - Menggunakan endpoint `GET /transactions` yang sudah ada (hanya pastikan filter berfungsi).
+  - [ ] `POST /transactions/:id_transaction/resolve` - Selesaikan konflik `SYNC_CONFLICT` secara manual. Request: `{ action: "CONFIRM" | "VOID", notes }`.
+  - [ ] `PATCH /transactions/:id_transaction/void` (Exception Workflow) - Perbarui logika yang ada: Jika transaksi masih `PENDING`, void biasa. Jika transaksi sudah `CONFIRMED`, gunakan Exception Workflow (Append-Only) dengan membuat entri di `TransactionCorrection` dan biarkan data asli tetap `CONFIRMED`.
+  - [ ] `POST /transactions/:id_transaction/correct` (Exception Workflow) - Koreksi transaksi `CONFIRMED`. Buat 1 transaksi baru berisi data yang benar, lalu buat *Immutable Bridge* ke `TransactionCorrection`. Request: `{ reason, items[], subtotal, total }`.
+- [ ] Unit test untuk DLQ dan skenario Exception/Reconciliation Workflow.
 
 ### TAHAP-8: Integration Test - TO-DO
 
