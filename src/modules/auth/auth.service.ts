@@ -133,6 +133,7 @@ export class AuthService {
       sub: tokenRecord.user.id_user,
       email: tokenRecord.user.email,
       role: tokenRecord.user.role,
+      id_merchant: tokenRecord.user.id_merchant,
     };
 
     const access_token = this.jwtService.sign(payload, {
