@@ -905,8 +905,8 @@ Mendapatkan daftar transaksi. OPERATOR hanya melihat transaksi merchant-nya send
 | `status` | `string` | Filter: `PENDING`, `CONFIRMED`, `VOIDED`, `FAILED` |
 | `sync_status` | `string` | Filter: `PENDING_SYNC`, `SYNCING`, `SYNCED`, `SYNC_FAILED`, `SYNC_CONFLICT` |
 | `id_device` | `string` | Filter berdasarkan `id_device` |
-| `page` | `integer` | Halaman (default: 1) |
-| `limit` | `integer` | Jumlah per halaman (default: 20) |
+| `limit` | `integer` | Jumlah per halaman (default: 10) |
+| `cursor` | `string` | Cursor untuk paginasi (id_transaction dari item terakhir di halaman sebelumnya) |
 | `start_date` | `string (ISO 8601)` | Filter awal tanggal |
 | `end_date` | `string (ISO 8601)` | Filter akhir tanggal |
 
@@ -935,9 +935,9 @@ Mendapatkan daftar transaksi. OPERATOR hanya melihat transaksi merchant-nya send
       }
     ],
     "meta": {
-      "page": 1,
-      "limit": 20,
-      "total": 340
+      "next_cursor": "cltxnxxx999...",
+      "has_next_page": true,
+      "limit": 10
     }
   }
 }
@@ -1002,9 +1002,9 @@ Mendapatkan detail satu transaksi beserta item (`DetailTransaction`) dan pembaya
 
 ---
 
-### PATCH /transactions/:id_transaction/void
+### PATCH /transactions/:id/void
 
-Membatalkan transaksi. OPERATOR hanya bisa void transaksi berstatus `PENDING` milik merchantnya. OWNER/ADMIN bisa void transaksi berstatus `PENDING` atau `CONFIRMED`.
+Membatalkan transaksi. Endpoint ini **HANYA** dapat membatalkan transaksi berstatus `PENDING`. Transaksi yang sudah berstatus `CONFIRMED` tidak dapat di-void melalui endpoint ini, melainkan harus melalui alur *Correction* (Tahap 7).
 
 **Header:** `Authorization: Bearer <access_token>`
 
@@ -1038,10 +1038,12 @@ Membatalkan transaksi. OPERATOR hanya bisa void transaksi berstatus `PENDING` mi
 ```json
 {
   "status": "error",
-  "message": "Transaksi yang sudah dikonfirmasi backend tidak dapat diubah oleh OPERATOR",
-  "error": {
-    "code": "TRANSACTION_IMMUTABLE",
-    "details": null
+  "message": "Confirmed transactions must go through correction workflow.",
+  "data": null,
+  "error_details": {
+    "statusCode": 400,
+    "path": "/api/transactions/cltxnxxx.../void",
+    "timestamp": "2025-08-13T10:15:00.000Z"
   }
 }
 ```
