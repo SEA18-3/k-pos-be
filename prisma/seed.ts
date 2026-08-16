@@ -55,7 +55,7 @@ async function main() {
     },
   });
 
-  await prisma.user.upsert({
+  const kasir = await prisma.user.upsert({
     where: { email: 'kasir@kpos.com' },
     update: {},
     create: {
@@ -105,6 +105,79 @@ async function main() {
   });
 
   console.log('Created Products:', productA.name, productB.name);
+
+  // 4. Create Dummy Transactions for testing Tahap 5
+  const device = await prisma.device.upsert({
+    where: { id_device: 'DEV-1' },
+    update: {},
+    create: {
+      id_device: 'DEV-1',
+      id_merchant: merchant.id_merchant,
+      id_user: kasir.id_user,
+      name: 'Tablet Kasir Depan',
+    }
+  });
+
+  await prisma.transaction.upsert({
+    where: { id_transaction: 'TRX-PENDING-1' },
+    update: {},
+    create: {
+      id_transaction: 'TRX-PENDING-1',
+      id_merchant: merchant.id_merchant,
+      id_user: kasir.id_user,
+      id_device: device.id_device,
+      offline_uuid: 'offline-uuid-pending-1',
+      status: 'PENDING',
+      sync_status: 'PENDING_SYNC',
+      subtotal: 3500,
+      total: 3500,
+      details: {
+        create: {
+          id_detail: 'DET-1',
+          id_product: productA.id_product,
+          quantity: 1,
+          unit_price: 3500,
+          subtotal: 3500,
+        }
+      }
+    }
+  });
+
+  await prisma.transaction.upsert({
+    where: { id_transaction: 'TRX-CONFIRMED-1' },
+    update: {},
+    create: {
+      id_transaction: 'TRX-CONFIRMED-1',
+      id_merchant: merchant.id_merchant,
+      id_user: kasir.id_user,
+      id_device: device.id_device,
+      offline_uuid: 'offline-uuid-confirmed-1',
+      status: 'CONFIRMED',
+      sync_status: 'SYNCED',
+      subtotal: 8500,
+      total: 8500,
+      details: {
+        create: [
+          {
+            id_detail: 'DET-2',
+            id_product: productA.id_product,
+            quantity: 1,
+            unit_price: 3500,
+            subtotal: 3500,
+          },
+          {
+            id_detail: 'DET-3',
+            id_product: productB.id_product,
+            quantity: 1,
+            unit_price: 5000,
+            subtotal: 5000,
+          }
+        ]
+      }
+    }
+  });
+
+  console.log('Created Dummy Transactions (TRX-PENDING-1 and TRX-CONFIRMED-1)');
   console.log('Database seeding completed!');
 }
 

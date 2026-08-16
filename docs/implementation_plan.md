@@ -169,13 +169,13 @@ Seluruh implementasi harus mengacu pada NFR yang telah didefinisikan di `docs/NF
 **Branch:** `feature/transaction-core`
 
 **To-Do:**
-- [ ] Implementasi Endpoint Transaction:
-  - [ ] `GET /transactions` - (Semua Role) List transaksi. Query params: `status` (`PENDING`, `CONFIRMED`, `VOIDED`, `FAILED`), `sync_status` (`PENDING_SYNC`, `SYNCING`, `SYNCED`, `SYNC_FAILED`, `SYNC_CONFLICT`), `id_device`, `page`, `limit`, `start_date`, `end_date`. OPERATOR hanya melihat transaksi merchantnya.
-  - [ ] `GET /transactions/:id_transaction` - Detail transaksi beserta array `details` (item per produk: `id_detail`, `id_product`, `quantity`, `unit_price`, `subtotal`) dan object `payment` (`id_payment`, `amount`, `method`, `status`, `cash_received`, `change_amount`, `qris_code`, `transfer_ref`, `verified_at`).
-  - [ ] `PATCH /transactions/:id_transaction/void` - (OPERATOR) Request body: `{ void_reason }`. OPERATOR hanya bisa void transaksi berstatus `PENDING`. OWNER/ADMIN bisa void `PENDING` atau `CONFIRMED`.
-- [ ] Logika State Machine di `TransactionService` untuk mencegah transisi status tidak valid.
-- [ ] Immutability Guard: Cegah void/modifikasi transaksi `CONFIRMED` oleh OPERATOR (response: `TRANSACTION_IMMUTABLE`).
-- [ ] Unit test lengkap untuk `TransactionService`.
+- [x] Implementasi Endpoint Transaction:
+  - [x] `GET /transactions` - (Semua Role) List transaksi. Menggunakan cursor pagination. OPERATOR hanya melihat transaksi merchantnya.
+  - [x] `GET /transactions/:id_transaction` - Detail transaksi beserta array `details` dan object `payment`.
+  - [x] `PATCH /transactions/:id_transaction/void` - Request body: `{ void_reason }`. Hanya bisa void transaksi berstatus `PENDING`.
+- [x] Logika State Machine di `TransactionService` untuk mencegah transisi status tidak valid.
+- [x] Immutability Guard: Cegah void/modifikasi transaksi `CONFIRMED` oleh siapapun (dilemparkan ke Tahap 7 Correction).
+- [x] Unit test lengkap untuk `TransactionService`.
 
 ### TAHAP-6A: Sync Pipeline & Offline Worker - TO-DO (PARALEL)
 

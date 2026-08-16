@@ -56,7 +56,7 @@ export class SupabaseStorageService {
       throw new BadRequestException('Product image is required.');
     }
 
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype as any)) {
+    if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
       throw new BadRequestException(
         `Invalid file type. Accepted types: ${ALLOWED_MIME_TYPES.join(', ')}`,
       );
@@ -98,7 +98,7 @@ export class SupabaseStorageService {
       throw new BadRequestException('Profile photo is required.');
     }
 
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype as any)) {
+    if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
       throw new BadRequestException(
         `Invalid file type. Accepted types: ${ALLOWED_MIME_TYPES.join(', ')}`,
       );
