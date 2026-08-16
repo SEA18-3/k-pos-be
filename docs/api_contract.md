@@ -249,17 +249,15 @@ Mendapatkan profil user yang sedang login. **Memerlukan Bearer Token JWT.**
 
 ### POST /auth/refresh
 
-Memperbarui access token menggunakan refresh token yang masih valid. Tidak memerlukan Bearer Token.
+Memperbarui access token menggunakan refresh token yang masih valid. Tidak memerlukan Bearer Token. Refresh token dikirim melalui header, bukan body.
 
-**Request Body**
+**Header**
 
-```json
-{
-  "refreshToken": "a3f9c2d1e4b5..."
-}
+```
+x-refresh-token: a3f9c2d1e4b5...
 ```
 
-*Catatan: field name adalah `refreshToken` (camelCase), bukan `refresh_token`.*
+*Body request tidak digunakan.*
 
 **Response Sukses (200 OK)**
 
@@ -290,17 +288,15 @@ Memperbarui access token menggunakan refresh token yang masih valid. Tidak memer
 
 ### POST /auth/logout
 
-Mencabut (revoke) refresh token dengan menghapusnya dari database. Tidak memerlukan Bearer Token.
+Mencabut (revoke) refresh token dengan menghapusnya dari database. Tidak memerlukan Bearer Token. Refresh token dikirim melalui header, bukan body.
 
-**Request Body**
+**Header**
 
-```json
-{
-  "refreshToken": "a3f9c2d1e4b5..."
-}
+```
+x-refresh-token: a3f9c2d1e4b5...
 ```
 
-*Field name: `refreshToken` (camelCase).*
+*Body request tidak digunakan.*
 
 **Response Sukses (200 OK)**
 
