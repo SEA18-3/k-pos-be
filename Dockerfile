@@ -26,4 +26,5 @@ ENV PORT=3000
 
 EXPOSE 3000
 
+USER node
 CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm run start:prod"]

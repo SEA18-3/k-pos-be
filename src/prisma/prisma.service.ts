@@ -13,7 +13,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
     const pool = new Pool({
       connectionString,
-      ssl: connectionString?.includes('localhost') ? false : { rejectUnauthorized: false },
+      ssl: connectionString?.includes('localhost') ? false : true, // Enforce TLS verification
     });
     const adapter = new PrismaPg(pool);
     super({ adapter });

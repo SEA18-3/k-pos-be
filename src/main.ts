@@ -46,7 +46,7 @@ async function bootstrap() {
   // 6. CORS
   const corsOrigins = process.env.CORS_ORIGINS;
   if (!corsOrigins || corsOrigins === '*') {
-    app.enableCors({ origin: '*' }); // Basic CORS without credentials
+    app.enableCors({ origin: true, credentials: true }); // Reflect origin instead of wildcard
   } else {
     app.enableCors({
       origin: corsOrigins.split(',').map((o) => o.trim()),
