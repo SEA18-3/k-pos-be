@@ -51,13 +51,9 @@ export class SyncProducerService implements OnModuleInit {
 
   async publishBatch(transactions: SyncTransactionDto[]) {
     try {
-      // Loop over the batch and publish each transaction as a separate message
-      // This ensures that each transaction is processed independently and idempotently
-      for (const trx of transactions) {
-        // Emit is fire-and-forget. We await it to ensure it's sent to the transport layer.
-        // Convert the observable to a Promise.
-        await lastValueFrom(this.client.emit('sync_transaction', trx));
-      }
+      // Mengirim seluruh array transaksi sebagai satu pesan batch ke RabbitMQ
+      // Hal ini mengurangi network serialization overhead NestJS yang secara drastis menurunkan waktu respons.
+      await lastValueFrom(this.client.emit('sync_transaction_batch', transactions));
       this.logger.log(`Successfully queued ${transactions.length} transactions`);
     } catch (error) {
       this.logger.error('Failed to publish transactions to RabbitMQ', error);
