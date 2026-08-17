@@ -114,6 +114,13 @@ export class SyncConsumerService {
         });
 
         // 3. Create Payment
+        // CASH: langsung VERIFIED karena tidak perlu rekonsiliasi manual.
+        // STATIC_QRIS / BANK_TRANSFER: PENDING, menunggu verifikasi oleh OWNER.
+        const paymentStatus =
+          data.payment.method === 'CASH'
+            ? PaymentStatus.VERIFIED
+            : PaymentStatus.PENDING;
+
         await tx.payment.create({
           data: {
             id_transaction: newTx.id_transaction,
@@ -124,7 +131,9 @@ export class SyncConsumerService {
             change_amount: data.payment.change_amount,
             qris_code: data.payment.qris_code,
             transfer_ref: data.payment.transfer_ref,
-            status: PaymentStatus.PENDING,
+            status: paymentStatus,
+            // Jika CASH, set verified_at otomatis pada saat sync
+            verified_at: paymentStatus === PaymentStatus.VERIFIED ? new Date() : null,
           },
         });
 
