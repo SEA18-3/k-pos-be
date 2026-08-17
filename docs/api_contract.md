@@ -1,1169 +1,234 @@
-# API Contract — K-POS Backend
+# K-POS API Contract
 
-Dokumen ini mendefinisikan spesifikasi lengkap seluruh endpoint REST API untuk backend K-POS. Seluruh endpoint (kecuali yang dicatat secara eksplisit) memerlukan autentikasi melalui Bearer Token JWT pada header `Authorization`.
+OpenAPI yang di-generate dari backend adalah normative machine-readable contract. Dokumen ini menjelaskan policy dan shape utama. Semua path berada di `/api/v1`, wire JSON memakai `snake_case`, dan route parameter memakai `:id`.
 
----
+## Envelope
 
-## Konvensi Umum
-
-### Base URL
-
-```
-https://<host>/api/v1
-```
-
-### Format Response
-
-Seluruh response, baik sukses maupun error, membungkus data dalam struktur JSON yang seragam berikut.
-
-**Response Sukses**
+Success:
 
 ```json
 {
   "status": "success",
-  "message": "Deskripsi singkat hasil operasi",
-  "data": { }
+  "message": "Sync batch queued",
+  "data": {}
 }
 ```
 
-**Response Error**
+Error:
 
 ```json
 {
   "status": "error",
-  "message": "Deskripsi singkat error",
+  "message": "Offline UUID was reused with a different payload",
   "error": {
-    "code": "ERROR_CODE",
-    "details": "Penjelasan lebih lanjut atau array error validasi"
+    "code": "IDEMPOTENCY_PAYLOAD_MISMATCH",
+    "details": {},
+    "request_id": "req_01..."
   }
 }
 ```
 
-### Header Wajib
+`request_id` wajib ada pada error. HTTP status tetap meaningful; envelope tidak mengubah error menjadi `200`.
 
-| Header | Nilai | Keterangan |
-|---|---|---|
-| `Content-Type` | `application/json` | Wajib untuk semua request dengan body |
-| `Authorization` | `Bearer <access_token>` | Wajib untuk semua endpoint yang terautentikasi |
-| `X-Device-ID` | `<uuid>` | Wajib untuk semua endpoint transaksi, mengidentifikasi perangkat Kasir |
+## Authentication
 
----
+### `POST /api/v1/auth/register`
 
-## Tabel HTTP Status Code dan Error Code
-
-| HTTP Status | Error Code | Trigger |
-|---|---|---|
-| `200 OK` | - | Request berhasil diproses |
-| `201 Created` | - | Resource baru berhasil dibuat |
-| `400 Bad Request` | `VALIDATION_ERROR` | Body request tidak memenuhi skema validasi |
-| `400 Bad Request` | `INVALID_TRANSITION` | Perubahan status transaksi tidak sah (misal: mencoba void transaksi yang sudah confirmed) |
-| `401 Unauthorized` | `INVALID_CREDENTIALS` | Username atau password salah |
-| `401 Unauthorized` | `TOKEN_EXPIRED` | Access token sudah kedaluwarsa |
-| `401 Unauthorized` | `TOKEN_INVALID` | Token tidak dapat diverifikasi |
-| `403 Forbidden` | `INSUFFICIENT_PERMISSION` | Pengguna terautentikasi tidak memiliki hak akses ke resource ini |
-| `403 Forbidden` | `TRANSACTION_IMMUTABLE` | Operasi modifikasi atau penghapusan pada transaksi yang sudah confirmed oleh backend |
-| `404 Not Found` | `RESOURCE_NOT_FOUND` | Resource yang diminta tidak ditemukan |
-| `409 Conflict` | `DUPLICATE_TRANSACTION` | `transaction_id` yang dikirim sudah ada di sistem (idempotency check) |
-| `409 Conflict` | `INSUFFICIENT_STOCK` | Stok produk tidak mencukupi saat konfirmasi transaksi |
-| `422 Unprocessable Entity` | `SYNC_VALIDATION_FAILED` | Transaksi gagal melewati validasi bisnis backend saat proses sync |
-| `429 Too Many Requests` | `RATE_LIMIT_EXCEEDED` | Jumlah request melebihi batas rate limiting |
-| `500 Internal Server Error` | `INTERNAL_ERROR` | Kesalahan tidak terduga di sisi server |
-
----
-
-## 1. Auth
-
-> Semua endpoint Auth di bawah prefix `/auth`. Endpoint `register`, `login`, `refresh`, `logout` **tidak memerlukan Bearer Token**. Hanya `GET /auth/profile` yang memerlukan token.
-
----
-
-### POST /auth/register
-
-Mendaftarkan **OWNER** baru secara self-serve. OPERATOR dan ENTRY tidak bisa mendaftar sendiri — harus dibuat oleh OWNER via `POST /users`.
-
-**Request Body**
+Membuat merchant dan primary `OWNER`. Tidak menerima role dari client.
 
 ```json
 {
-  "full_name": "Budi Santoso",
-  "email": "budi@example.com",
-  "password": "password123",
-  "merchant_name": "Toko Kopi Budi"
+  "merchant_name": "Kedai Nusa",
+  "timezone": "Asia/Jakarta",
+  "full_name": "Nadia",
+  "email": "owner@kedainusa.test",
+  "password": "strong-password"
 }
 ```
 
-*Field `role` tidak perlu dikirim — selalu `OWNER` secara default.*
-
-**Response Sukses (201 Created)**
+### `POST /api/v1/auth/login`
 
 ```json
 {
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "user": {
-      "id_user": "clxxxxx...",
-      "full_name": "Budi Santoso",
-      "email": "budi@example.com",
-      "role": "OWNER",
-      "is_active": true,
-      "created_at": "2025-08-14T10:00:00.000Z"
-    }
-  }
+  "email": "operator@kedainusa.test",
+  "password": "strong-password",
+  "device_id": "dev_01..."
 }
 ```
 
-**Response Error (409 Conflict)**
+Response memberi access token 15 menit dan, untuk Operator pada paired device, signed offline lease. Rotating refresh token dikirim hanya sebagai `HttpOnly; Secure; SameSite` cookie, bukan JSON/header custom.
 
-```json
-{
-  "status": "error",
-  "message": "Email already registered",
-  "error": {
-    "code": "CONFLICT",
-    "details": null
-  }
-}
-```
+### `POST /api/v1/auth/refresh`
 
-**Response Error (400 Bad Request)**
+Memutar refresh session dan cookie; mendeteksi token reuse. Operator mendapat refreshed offline lease bila device masih valid.
 
-```json
-{
-  "status": "error",
-  "message": "Validasi gagal",
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "details": [
-      { "field": "password", "message": "Password must be at least 8 characters" }
-    ]
-  }
-}
-```
+### `POST /api/v1/auth/logout`
 
----
+Mencabut current refresh session dan clear cookie. Local queued sale tidak dihapus.
 
-### POST /auth/login
+### `GET /api/v1/auth/me`
 
-Login untuk semua role.
+Mengembalikan authenticated user, merchant, role, dan device context bila ada.
 
-**Request Body**
+## User dan merchant
 
-```json
-{
-  "email": "budi@example.com",
-  "password": "password123"
-}
-```
+- `GET /api/v1/merchants/me` — semua role.
+- `GET /api/v1/users` — Owner; merchant-scoped, filter `role`/`is_active`.
+- `POST /api/v1/users` — Owner; role hanya `ENTRY | OPERATOR`.
+- `PATCH /api/v1/users/:id` — Owner; name/role hanya Entry/Operator.
+- `PATCH /api/v1/users/:id/status` — Owner; activate/deactivate.
+- `POST /api/v1/users/:id/change-password` — Owner atau self sesuai policy.
 
-**Response Sukses (200 OK)**
+Public API tidak dapat membuat/demote/menonaktifkan primary Owner.
 
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "access_token": "eyJhbGci...",
-    "refresh_token": "a3f9c2d1e4b5...",
-    "user": {
-      "id_user": "clxxxxx...",
-      "full_name": "Budi Santoso",
-      "email": "budi@example.com",
-      "role": "OPERATOR",
-      "is_active": true
-    }
-  }
-}
-```
+## Device
 
-*Catatan: `access_token` adalah JWT yang di-sign dengan payload `{ sub, email, role }`. `refresh_token` adalah opaque random hex (80 karakter), disimpan di tabel `RefreshToken`, berlaku 7 hari.*
+- `POST /api/v1/devices` — Owner membuat pairing code.
+- `POST /api/v1/devices/pair` — online pairing dengan pairing code + hardware identity.
+- `GET /api/v1/devices` — Owner list shared counter.
+- `DELETE /api/v1/devices/:id` — Owner revoke.
 
-**Response Error (401 Unauthorized)**
+Pairing code single-use, short-lived, dan rate-limited. Revocation menginvalidasi session/lease terkait tanpa menghapus local queue.
 
-```json
-{
-  "status": "error",
-  "message": "Invalid credentials",
-  "error": {
-    "code": "UNAUTHORIZED",
-    "details": null
-  }
-}
-```
+## Product dan stock
 
-**Response Error (429 Too Many Requests)**
+- `GET /api/v1/products` — semua role, merchant-scoped.
+- `POST /api/v1/products` — Entry/Owner.
+- `PATCH /api/v1/products/:id` — Entry/Owner.
+- `POST /api/v1/products/:id/archive` — Entry/Owner.
+- `POST /api/v1/products/:id/restore` — Entry/Owner.
+- `POST /api/v1/products/:id/stock-adjustments` — Entry/Owner.
+- `GET /api/v1/products/:id/stock-history` — Entry/Owner.
 
-```json
-{
-  "status": "error",
-  "message": "Terlalu banyak request. Coba lagi dalam beberapa saat.",
-  "error": {
-    "code": "RATE_LIMIT_EXCEEDED",
-    "details": null
-  }
-}
-```
+Price, quantity, subtotal, dan total adalah integer rupiah/units. Historical sync membawa product snapshot dan tidak direprice ke current catalog.
 
----
+## Sync
 
-### GET /auth/profile
+### `POST /api/v1/sync`
 
-Mendapatkan profil user yang sedang login. **Memerlukan Bearer Token JWT.**
-
-**Header:** `Authorization: Bearer <access_token>`
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "user": {
-      "id_user": "clxxxxx...",
-      "full_name": "Budi Santoso",
-      "email": "budi@example.com",
-      "role": "OPERATOR",
-      "is_active": true,
-      "created_at": "2025-08-14T10:00:00.000Z",
-      "updated_at": "2025-08-14T10:00:00.000Z"
-    }
-  }
-}
-```
-
-**Response Error (401 Unauthorized)**
-
-```json
-{
-  "status": "error",
-  "message": "Unauthorized",
-  "error": {
-    "code": "UNAUTHORIZED",
-    "details": null
-  }
-}
-```
-
----
-
-### POST /auth/refresh
-
-Memperbarui access token menggunakan refresh token yang masih valid. Tidak memerlukan Bearer Token. Refresh token dikirim melalui header, bukan body.
-
-**Header**
-
-```
-x-refresh-token: a3f9c2d1e4b5...
-```
-
-*Body request tidak digunakan.*
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "access_token": "eyJhbGci..."
-  }
-}
-```
-
-**Response Error (401 Unauthorized)**
-
-```json
-{
-  "status": "error",
-  "message": "Invalid or expired refresh token",
-  "error": {
-    "code": "UNAUTHORIZED",
-    "details": null
-  }
-}
-```
-
----
-
-### POST /auth/logout
-
-Mencabut (revoke) refresh token dengan menghapusnya dari database. Tidak memerlukan Bearer Token. Refresh token dikirim melalui header, bukan body.
-
-**Header**
-
-```
-x-refresh-token: a3f9c2d1e4b5...
-```
-
-*Body request tidak digunakan.*
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "success": true
-  }
-}
-```
-
----
-
-## 2. Merchant Management
-
-> Manajemen profil toko (Merchant). Profil ini otomatis dibuatkan saat OWNER mendaftar.
-
-### GET /merchants/me
-
-Mengambil data profil merchant dari user yang sedang login.
-
-**Header:** `Authorization: Bearer <access_token>`
-
-**Response Sukses (200 OK)**
-```json
-{
-  "status": "success",
-  "message": "Merchant profile retrieved successfully",
-  "data": {
-    "merchant": {
-      "id_merchant": "clyyyyy...",
-      "name": "Toko Kopi Budi",
-      "address": null,
-      "phone": null,
-      "email": null,
-      "is_active": true,
-      "onboarded_at": "2025-08-14T10:00:00.000Z",
-      "created_at": "2025-08-14T10:00:00.000Z",
-      "updated_at": "2025-08-14T10:00:00.000Z"
-    }
-  }
-}
-```
-
----
-
-## 3. User Management
-
-### POST /users
-
-Membuat akun pengguna baru di dalam merchant. Dapat dilakukan oleh **OWNER** (hanya untuk OPERATOR/ENTRY di merchantnya sendiri) atau **ADMIN**.
-
-**Header:** `Authorization: Bearer <access_token>`
-
-**Request Body**
-
-```json
-{
-  "full_name": "Budi Santoso",
-  "email": "budi@toko.com",
-  "password": "password123",
-  "role": "OPERATOR"
-}
-```
-
-*Nilai `role` yang diizinkan: `OPERATOR`, `ENTRY`, `OWNER` (ADMIN tidak bisa dibuat via endpoint ini).*
-
-**Response Sukses (201 Created)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_user": "clxxxxx...",
-    "full_name": "Budi Santoso",
-    "email": "budi@toko.com",
-    "role": "OPERATOR",
-    "id_merchant": "clyyyyy...",
-    "is_active": true,
-    "created_at": "2025-08-13T10:00:00.000Z"
-  }
-}
-```
-
----
-
-### GET /users
-
-Mengambil daftar seluruh user/staf yang berada dalam satu merchant yang sama.
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "items": [
-      {
-        "id_user": "clxxxxx...",
-        "full_name": "Budi Santoso",
-        "email": "budi@toko.com",
-        "role": "OPERATOR",
-        "id_merchant": "clyyyyy...",
-        "is_active": true,
-        "created_at": "2025-08-13T10:00:00.000Z",
-        "updated_at": "2025-08-13T10:00:00.000Z"
-      }
-    ]
-  }
-}
-```
-
----
-
-### PATCH /users/:id_user/status
-
-Mengaktifkan atau menonaktifkan akun staf (Soft Delete).
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
-
-**Request Body**
-```json
-{
-  "is_active": false
-}
-```
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_user": "clxxxxx...",
-    "full_name": "Budi Santoso",
-    "email": "budi@toko.com",
-    "role": "OPERATOR",
-    "id_merchant": "clyyyyy...",
-    "is_active": false,
-    "updated_at": "2025-08-14T10:00:00.000Z"
-  }
-}
-```
-
-
-
----
-
-## 4. Device Pairing & Management
-
-> Endpoint untuk manajemen perangkat kasir. Hanya `OWNER` yang dapat mendaftarkan dan menghapus perangkat. Endpoint `/devices/pair` dapat diakses secara publik (tanpa token) oleh aplikasi kasir.
-
----
-
-### POST /devices
-
-Mendaftarkan perangkat baru dan meng-*generate* kode pairing 6 digit.
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
-
-**Request Body**
-
-```json
-{
-  "name": "Tablet Kasir Depan"
-}
-```
-
-**Response Sukses (201 Created)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil mendaftarkan perangkat",
-  "data": {
-    "id_device": "cldevxxx...",
-    "name": "Tablet Kasir Depan",
-    "pairing_code": "482910",
-    "status": "UNPAIRED",
-    "created_at": "2025-08-14T10:00:00.000Z"
-  }
-}
-```
-
----
-
-### POST /devices/pair
-
-Melakukan *pairing* dari perangkat fisik. Mengunci `hardware_id` ke perangkat yang didaftarkan.
-
-**Header:** Tidak wajib *(Public Endpoint)*
-
-**Request Body**
-
-```json
-{
-  "pairing_code": "482910",
-  "hardware_id": "uuid-atau-android-id-unik-disini"
-}
-```
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Perangkat berhasil dipairing",
-  "data": {
-    "id_device": "cldevxxx...",
-    "status": "PAIRED"
-  }
-}
-```
-
-**Response Error (404/400) — Kode salah/kadaluwarsa**
-
-```json
-{
-  "status": "error",
-  "message": "Invalid pairing code or device already paired",
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "details": null
-  }
-}
-```
-
----
-
-### GET /devices
-
-Mendapatkan daftar perangkat milik merchant.
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "items": [
-      {
-        "id_device": "cldevxxx...",
-        "name": "Tablet Kasir Depan",
-        "status": "PAIRED",
-        "last_online_at": "2025-08-14T10:30:00.000Z",
-        "created_at": "2025-08-14T10:00:00.000Z"
-      }
-    ]
-  }
-}
-```
-
----
-
-### DELETE /devices/:id_device
-
-Mencabut akses (*revoke*) dan men-soft delete perangkat.
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER)*
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Perangkat berhasil dihapus",
-  "data": {
-    "id_device": "cldevxxx...",
-    "status": "REVOKED",
-    "is_active": false
-  }
-}
-```
-
----
-
-## 5. Upload & Storage
-
-> Endpoint upload ini digunakan secara generik untuk mengunggah gambar (seperti gambar produk, logo merchant, dll) ke Supabase Storage. Mengembalikan URL gambar yang bisa digunakan untuk endpoint lain.
-
----
-
-### POST /upload/image
-
-Upload file gambar (maksimal 5MB, format: `jpeg`, `png`, `webp`).
-
-**Header:**
-- `Authorization: Bearer <access_token>` *(OWNER, OPERATOR, atau ENTRY)*
-- `Content-Type: multipart/form-data`
-
-**Request Body (Form-Data)**
-
-| Key | Tipe | Keterangan |
-|---|---|---|
-| `file` | `file` | File gambar biner |
-
-**Response Sukses (201 Created)**
-
-```json
-{
-  "status": "success",
-  "message": "File berhasil diunggah",
-  "data": {
-    "file_url": "https://xxxxx.supabase.co/storage/v1/object/public/k-pos-images/products/123456789.jpg"
-  }
-}
-```
-
-**Response Error (400 Bad Request - File terlalu besar/format salah)**
-
-```json
-{
-  "status": "error",
-  "message": "Validasi gagal",
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "details": "File must be a valid image and not exceed 5MB"
-  }
-}
-```
-
----
-
-## 6. Produk & Inventory
-
-> Seluruh endpoint produk memerlukan autentikasi. `GET /products` dapat diakses semua role dalam satu merchant. Endpoint mutasi (POST, PATCH, DELETE) hanya untuk `OWNER` dan `ENTRY`.
-
----
-
-### GET /products
-
-Mendapatkan daftar produk beserta stok terkini milik merchant yang sedang login.
-
-**Header:** `Authorization: Bearer <access_token>`
-
-**Query Parameters**
-
-| Parameter | Tipe | Keterangan |
-|---|---|---|
-| `cursor` | `string` | Cursor untuk pagination (menggunakan `id_product`) |
-| `limit` | `integer` | Jumlah item per halaman (default: 50) |
-| `search` | `string` | Pencarian berdasarkan `name` atau `sku` |
-| `is_active` | `boolean` | Filter produk aktif/nonaktif |
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "items": [
-      {
-        "id_product": "clxxxxx...",
-        "id_merchant": "clyyyyy...",
-        "name": "Mie Goreng",
-        "sku": "MG-001",
-        "price": "15000.00",
-        "image_url": "https://storage.googleapis.com/bucket/products/mg-001.jpg",
-        "is_active": true,
-        "created_at": "2025-08-13T10:00:00.000Z",
-        "updated_at": "2025-08-13T10:00:00.000Z",
-        "inventory": {
-          "id_inventory": "clinvxx...",
-          "current_stock": 200,
-          "reserved": 0,
-          "last_updated": "2025-08-13T10:00:00.000Z"
-        }
-      }
-    ],
-    "meta": {
-      "next_cursor": "clprdxxx...",
-      "limit": 50
-    }
-  }
-}
-```
-
----
-
-### POST /products
-
-Menambahkan produk baru dan otomatis membuat record `Inventory` dengan `current_stock = 0`.
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ENTRY)*
-
-**Request Body**
-
-```json
-{
-  "name": "Mie Goreng",
-  "sku": "MG-001",
-  "price": 15000,
-  "image_url": "https://storage.googleapis.com/bucket/products/mg-001.jpg"
-}
-```
-
-**Response Sukses (201 Created)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_product": "clxxxxx...",
-    "id_merchant": "clyyyyy...",
-    "name": "Mie Goreng",
-    "sku": "MG-001",
-    "price": "15000.00",
-    "image_url": "https://storage.googleapis.com/bucket/products/mg-001.jpg",
-    "is_active": true,
-    "created_at": "2025-08-13T10:00:00.000Z",
-    "inventory": {
-      "id_inventory": "clinvxx...",
-      "current_stock": 0,
-      "reserved": 0
-    }
-  }
-}
-```
-
----
-
-### PATCH /products/:id_product
-
-Update detail produk (nama, SKU, harga).
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ENTRY)*
-
-**Request Body** *(semua field opsional)*
-
-```json
-{
-  "name": "Mie Goreng Spesial",
-  "sku": "MG-001-S",
-  "price": 17000,
-  "image_url": "https://storage.googleapis.com/bucket/products/mg-001-s.jpg"
-}
-```
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_product": "clxxxxx...",
-    "name": "Mie Goreng Spesial",
-    "sku": "MG-001-S",
-    "price": "17000.00",
-    "image_url": "https://storage.googleapis.com/bucket/products/mg-001-s.jpg",
-    "is_active": true,
-    "updated_at": "2025-08-13T11:00:00.000Z"
-  }
-}
-```
-
----
-
-### POST /products/:id_product/stock
-
-Penyesuaian stok manual (*Stock Opname* / Barang Masuk / Barang Keluar). Mencatat `StockHistory` dengan `movement_type = ADJUSTMENT`.
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ENTRY)*
-
-**Request Body**
-
-```json
-{
-  "quantity": 50,
-  "notes": "Barang masuk dari supplier"
-}
-```
-
-*`quantity` positif = penambahan stok; negatif = pengurangan (misal: barang rusak/hilang).*
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_product": "clxxxxx...",
-    "previous_stock": 200,
-    "current_stock": 250,
-    "stock_history": {
-      "id_stock": "clstkxx...",
-      "movement_type": "ADJUSTMENT",
-      "quantity": 50,
-      "notes": "Barang masuk dari supplier",
-      "date": "2025-08-13T10:00:00.000Z"
-    }
-  }
-}
-```
-
----
-
-### DELETE /products/:id_product
-
-Soft delete produk (`is_active = false`). Produk tidak akan muncul di daftar kecuali difilter.
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ENTRY)*
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_product": "clxxxxx...",
-    "is_active": false,
-    "updated_at": "2025-08-13T12:00:00.000Z"
-  }
-}
-```
-
----
-
-## 7. Transaksi
-
----
-
-### POST /sync
-
-Endpoint inti sinkronisasi. Menerima satu batch berisi maksimal 100 transaksi *provisional* dari perangkat OPERATOR. Setiap transaksi diproses secara idempoten berdasarkan `offline_uuid`.
-
-**Header:** `Authorization: Bearer <access_token>`
-
-**Request Body**
+Authorization: Operator. Header `X-Device-ID` required dan authoritative. Maksimum API 100 transaction; Operator PWA mengirim chunk 25.
 
 ```json
 {
   "transactions": [
     {
-      "offline_uuid": "b6a3c1d2-...",
-      "id_device": "cldevxxx...",
-      "created_at_local": "2025-08-13T07:30:00.000Z",
-      "subtotal": 30000,
-      "total": 30000,
+      "offline_uuid": "018f0f3e-7b9a-7f0c-9a4f-3c2d58ebf990",
+      "created_at_local": "2026-08-17T15:20:10+07:00",
+      "subtotal": 42000,
+      "total": 42000,
       "notes": null,
       "items": [
         {
-          "id_product": "clprdxxx...",
+          "id_product": "prd_01...",
+          "product_name": "Kopi Susu Aren",
+          "product_sku": "KSA-01",
+          "catalog_version": 7,
           "quantity": 2,
-          "unit_price": 15000,
-          "subtotal": 30000
+          "unit_price": 21000,
+          "subtotal": 42000
         }
       ],
       "payment": {
         "method": "CASH",
-        "amount": 30000,
+        "amount": 42000,
         "cash_received": 50000,
-        "change_amount": 20000
+        "change_amount": 8000,
+        "qris_code": null,
+        "transfer_ref": null
       }
     }
   ]
 }
 ```
 
-> **Catatan Sinkronisasi (Offline-First):** 
-> - **Gagal Teknis (DLQ):** Jika payload cacat (misal: `id_product` palsu yang melanggar Foreign Key), transaksi ditolak oleh *database*, dan *Worker* melemparnya ke **RabbitMQ Dead Letter Queue (DLQ)**. Transaksi ini tidak akan muncul di `GET /transactions`.
-> - **Konflik Bisnis (SYNC_CONFLICT):** Jika data valid namun stok kurang, transaksi tetap di-*commit* ke tabel `Transaction` dengan `sync_status = SYNC_CONFLICT`. Transaksi ini **akan muncul** di `GET /transactions` dan harus direkonsiliasi oleh Owner di Tahap 7.
+`id_device`, `id_merchant`, dan `id_user` tidak boleh ada pada item. Server mengambilnya dari verified request context.
 
-*Untuk STATIC_QRIS: sertakan `qris_code`. Untuk BANK_TRANSFER: sertakan `transfer_ref`.*
+Validation rules:
 
-**Response Sukses (200 OK)**
+- Entire shape is validated before durable receipt creation.
+- Arithmetic (`quantity × unit_price`, subtotal, total, cash change) harus konsisten.
+- Semua product ID harus milik merchant; archived/stale snapshot tetap boleh.
+- Existing key dengan different canonical hash menolak seluruh batch `409`.
+- Existing identical key direuse dan tidak dipublish sebagai business effect baru.
+
+Accepted response (`200`, berarti queued):
 
 ```json
 {
   "status": "success",
-  "message": "Batch diterima dan sedang diproses",
+  "message": "Sync batch queued",
   "data": {
-    "accepted": 1,
-    "queued_at": "2025-08-13T10:05:00.000Z"
+    "accepted": 2,
+    "queued_at": "2026-08-17T08:20:13.240Z"
   }
 }
 ```
 
----
+Rabbit/publish unavailable mengembalikan `503 SYNC_BROKER_UNAVAILABLE`; receipt yang sudah committed tetap direcover dispatcher. Client retry exact batch dengan stable ID/payload.
 
-### GET /transactions
+### `GET /api/v1/sync/receipts`
 
-Mendapatkan daftar transaksi. OPERATOR hanya melihat transaksi merchant-nya sendiri. OWNER/ADMIN melihat seluruh transaksi merchant.
+Repeated query, maksimum 100:
 
-**Header:** `Authorization: Bearer <access_token>`
-
-**Query Parameters**
-
-| Parameter | Tipe | Keterangan |
-|---|---|---|
-| `status` | `string` | Filter: `PENDING`, `CONFIRMED`, `VOIDED`, `FAILED` |
-| `sync_status` | `string` | Filter: `PENDING_SYNC`, `SYNCING`, `SYNCED`, `SYNC_FAILED`, `SYNC_CONFLICT` |
-| `id_device` | `string` | Filter berdasarkan `id_device` |
-| `limit` | `integer` | Jumlah per halaman (default: 10) |
-| `cursor` | `string` | Cursor untuk paginasi (id_transaction dari item terakhir di halaman sebelumnya) |
-| `start_date` | `string (ISO 8601)` | Filter awal tanggal |
-| `end_date` | `string (ISO 8601)` | Filter akhir tanggal |
-
-**Response Sukses (200 OK)**
+```text
+/api/v1/sync/receipts?offline_uuid=uuid-a&offline_uuid=uuid-b
+```
 
 ```json
 {
   "status": "success",
-  "message": "Berhasil",
+  "message": "Sync receipts retrieved",
   "data": {
     "items": [
       {
-        "id_transaction": "cltxnxxx...",
-        "id_merchant": "clmrcxxx...",
-        "id_user": "clusrxxx...",
-        "id_device": "cldevxxx...",
-        "offline_uuid": "b6a3c1d2-...",
-        "status": "CONFIRMED",
-        "sync_status": "SYNCED",
-        "subtotal": "30000.00",
-        "total": "30000.00",
-        "created_at_local": "2025-08-13T07:30:00.000Z",
-        "created_at": "2025-08-13T10:05:00.000Z",
-        "confirmed_at": "2025-08-13T10:05:00.000Z",
-        "notes": null
+        "id": "rcp_01...",
+        "offline_uuid": "uuid-a",
+        "status": "SYNCED",
+        "id_transaction": "txn_01...",
+        "error": null,
+        "queued_at": "2026-08-17T08:20:13.240Z",
+        "updated_at": "2026-08-17T08:20:13.811Z"
       }
-    ],
-    "meta": {
-      "next_cursor": "cltxnxxx999...",
-      "has_next_page": true,
-      "limit": 10
-    }
+    ]
   }
 }
 ```
 
----
+Status: `QUEUED | PROCESSING | SYNCED | CONFLICT | FAILED`.
 
-### GET /transactions/:id_transaction
+### `POST /api/v1/sync/receipts/:id/retry`
 
-Mendapatkan detail satu transaksi beserta item (`DetailTransaction`) dan pembayaran (`Payment`).
+Owner-only. Hanya receipt `FAILED` dengan classified retryable error. Replay menggunakan stored canonical payload.
 
-**Header:** `Authorization: Bearer <access_token>`
+## Transaction dan reconciliation
 
-**Response Sukses (200 OK)**
+- `GET /api/v1/transactions` — Owner/Entry merchant-wide; Operator sesuai permission policy.
+- `GET /api/v1/transactions/:id` — merchant-scoped detail + original/effective status.
+- `POST /api/v1/transactions/:id/conflict-resolution` — Owner, `{ "action": "CONFIRM" | "VOID", "notes": "..." }`.
+- `POST /api/v1/transactions/:id/void` — Owner append-only correction.
+- `POST /api/v1/transactions/:id/corrections` — Owner membuat replacement transaction + bridge.
 
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_transaction": "cltxnxxx...",
-    "id_merchant": "clmrcxxx...",
-    "id_user": "clusrxxx...",
-    "id_device": "cldevxxx...",
-    "offline_uuid": "b6a3c1d2-...",
-    "status": "CONFIRMED",
-    "sync_status": "SYNCED",
-    "subtotal": "30000.00",
-    "total": "30000.00",
-    "notes": null,
-    "created_at_local": "2025-08-13T07:30:00.000Z",
-    "created_at": "2025-08-13T10:05:00.000Z",
-    "confirmed_at": "2025-08-13T10:05:00.000Z",
-    "synced_at": "2025-08-13T10:05:00.000Z",
-    "voided_at": null,
-    "voided_by": null,
-    "void_reason": null,
-    "details": [
-      {
-        "id_detail": "cldetxxx...",
-        "id_product": "clprdxxx...",
-        "quantity": 2,
-        "unit_price": "15000.00",
-        "subtotal": "30000.00"
-      }
-    ],
-    "payment": {
-      "id_payment": "clpaymxx...",
-      "amount": "30000.00",
-      "method": "CASH",
-      "status": "VERIFIED",
-      "cash_received": "50000.00",
-      "change_amount": "20000.00",
-      "qris_code": null,
-      "transfer_ref": null,
-      "verified_at": "2025-08-13T10:05:00.000Z",
-      "verified_by": null
-    }
-  }
-}
-```
+Confirm conflict mengizinkan negative stock dan mencatat discrepancy exactly once. Void conflict tidak membuat stock movement.
 
----
+## Payment exception
 
-### PATCH /transactions/:id/void
+- `GET /api/v1/payments?status=PENDING` — Owner; daftar pembayaran non-cash yang perlu diperiksa.
+- `POST /api/v1/payments/:id/reconcile` — Owner; action `CONFIRM | REJECT`, reason required. `CONFIRM` menghasilkan `RECONCILED`; `REJECT` menghasilkan `FAILED`.
 
-Membatalkan transaksi. 
-- **Bagi Kasir (OPERATOR):** HANYA dapat membatalkan transaksi berstatus `PENDING`. Transaksi yang sudah `CONFIRMED` tidak bisa di-void oleh Kasir.
-- **Bagi OWNER / ADMIN:** Dapat membatalkan transaksi berstatus `PENDING` maupun `CONFIRMED` (berguna untuk kasus penipuan pembayaran seperti uang QRIS/Transfer yang ternyata tidak masuk rekening).
+Canonical payment status hanya `PENDING | VERIFIED | FAILED | RECONCILED`. Payment `FAILED` tidak otomatis mengubah immutable transaction. Owner tetap menjalankan append-only void/correction bila efek sale perlu dibatalkan dari ledger dan reporting.
 
-**Header:** `Authorization: Bearer <access_token>`
+## Owner dashboard dan audit
 
-**Request Body**
+- `GET /api/v1/owner/dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD` — Owner only; default 30 hari, max 90, merchant timezone.
+- `GET /api/v1/audit-events` — Owner only, cursor pagination.
 
-```json
-{
-  "void_reason": "Pelanggan membatalkan pesanan"
-}
-```
+Dashboard response memuat `gross_sales`, `net_sales`, `transaction_count`, `average_order_value`, `daily_series`, `top_products`, `data_as_of`, dan `projection_lag_seconds`.
 
-*Field name sesuai schema: `void_reason`.*
+## Health dan metrics
 
-**Response Sukses (200 OK)**
+- `GET /health` — dependency-aware JSON untuk API, PostgreSQL, Rabbit, dan reporting freshness.
+- `GET /metrics` — protected/internal Prometheus metrics pada production.
 
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_transaction": "cltxnxxx...",
-    "status": "VOIDED",
-    "voided_at": "2025-08-13T10:10:00.000Z",
-    "voided_by": "clusrxxx..."
-  }
-}
-```
+## Stable error codes
 
-**Response Error (403 Forbidden) — Transaksi Immutable**
-
-```json
-{
-  "status": "error",
-  "message": "Confirmed transactions must go through correction workflow.",
-  "data": null,
-  "error_details": {
-    "statusCode": 400,
-    "path": "/api/transactions/cltxnxxx.../void",
-    "timestamp": "2025-08-13T10:15:00.000Z"
-  }
-}
-```
-
----
-
-## 7. Reconciliation (OWNER / ADMIN)
-
-> Seluruh endpoint ini hanya dapat diakses oleh role `OWNER` (hanya untuk merchantnya sendiri) atau `ADMIN`.
-
----
-
-### GET /transactions?sync_status=SYNC_CONFLICT
-
-Mendapatkan daftar transaksi bermasalah. Gunakan endpoint `GET /transactions` yang sama dengan query param `sync_status=SYNC_CONFLICT`.
-
-**Contoh Request**
-
-```
-GET /api/transactions?sync_status=SYNC_CONFLICT
-```
-
-Response mengikuti format `GET /transactions` di atas dengan `sync_status: "SYNC_CONFLICT"`.
-
----
-
-### POST /transactions/:id_transaction/resolve
-
-Menyelesaikan satu transaksi berstatus `SYNC_CONFLICT` secara manual.
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ADMIN)*
-
-**Request Body**
-
-```json
-{
-  "action": "CONFIRM",
-  "notes": "Dikonfirmasi manual oleh owner karena stok sudah diisi ulang"
-}
-```
-
-*`action`: `CONFIRM` atau `VOID`.*
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_transaction": "cltxnxxx...",
-    "status": "CONFIRMED",
-    "sync_status": "SYNCED",
-    "confirmed_at": "2025-08-13T11:00:00.000Z"
-  }
-}
-```
-
----
-
-### POST /transactions/:id_transaction/correct
-
-Koreksi transaksi yang sudah `CONFIRMED`. Membuat transaksi baru yang dihubungkan ke transaksi lama via tabel `TransactionCorrection` (*Immutable Bridge* — transaksi asli tidak diubah).
-
-**Header:** `Authorization: Bearer <access_token>` *(OWNER atau ADMIN)*
-
-**Request Body**
-
-```json
-{
-  "reason": "Salah input jumlah item",
-  "items": [
-    {
-      "id_product": "clprdxxx...",
-      "quantity": 1,
-      "unit_price": 15000,
-      "subtotal": 15000
-    }
-  ],
-  "subtotal": 15000,
-  "total": 15000
-}
-```
-
-**Response Sukses (201 Created)**
-
-```json
-{
-  "status": "success",
-  "message": "Berhasil",
-  "data": {
-    "id_correction": "clcorxxx...",
-    "id_old_transaction": "cltxnxxx...",
-    "id_new_transaction": "cltxnyyy...",
-    "corrected_by": "clusrxxx...",
-    "reason": "Salah input jumlah item",
-    "created_at": "2025-08-13T11:30:00.000Z"
-  }
-}
-```
-
----
-
-## 8. Health Check
-
-### GET /health
-
-Mengecek kondisi sistem. Tidak memerlukan autentikasi.
-
-**Response Sukses (200 OK)**
-
-```json
-{
-  "status": "success",
-  "message": "OK",
-  "data": {
-    "uptime": 3600,
-    "database": "connected",
-    "message_queue": "connected"
-  }
-}
-```
+Minimal codes: `VALIDATION_ERROR`, `UNAUTHENTICATED`, `FORBIDDEN`, `TENANT_MISMATCH`, `DEVICE_NOT_PAIRED`, `DEVICE_REVOKED`, `OFFLINE_LEASE_EXPIRED`, `IDEMPOTENCY_PAYLOAD_MISMATCH`, `SYNC_BROKER_UNAVAILABLE`, `SYNC_RECEIPT_NOT_RETRYABLE`, `TRANSACTION_CONFLICT`, `INVALID_STATE_TRANSITION`, `NOT_FOUND`, dan `RATE_LIMITED`.

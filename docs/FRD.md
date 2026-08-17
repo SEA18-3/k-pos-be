@@ -1,194 +1,98 @@
-# 1. Functional Requirements Document (FRD)
+# Functional Requirements Document
 
-K-POS memungkinkan Kasir tetap melakukan transaksi ketika koneksi internet tidak tersedia. Transaksi yang dibuat secara offline harus disimpan secara persisten pada perangkat, diberi status Provisional, dan kemudian disinkronisasikan ke backend ketika koneksi kembali tersedia.
+Dokumen ini adalah requirement produk K-POS. ID di sini dipakai oleh [traceability matrix](traceability_matrix.md).
 
-Backend harus memastikan transaksi tidak hilang atau tercatat dua kali, mendukung transaksi dari beberapa perangkat secara bersamaan, serta menjaga transaksi yang sudah dikonfirmasi backend agar tidak dapat diubah oleh Operator (Kasir). Case study secara eksplisit menetapkan kebutuhan offline transaction creation, reliable synchronization, duplicate/lost transaction prevention, backend immutability, dan concurrent multi-device operation.
+## Role dan permission
 
-## a. User stories & use cases for each feature
+| Capability                      | Operator | Entry | Owner |
+| ------------------------------- | :------: | :---: | :---: |
+| Checkout dan local receipt      |    ✓     |   —   |   —   |
+| Sync milik device aktif         |    ✓     |   —   |   —   |
+| Read active catalog             |    ✓     |   ✓   |   ✓   |
+| Manage catalog dan price        |    —     |   ✓   |   ✓   |
+| Stock adjustment/history        |    —     |   ✓   |   ✓   |
+| User/device administration      |    —     |   —   |   ✓   |
+| Conflict/payment reconciliation |    —     |   —   |   ✓   |
+| Audit dan sales reporting       |    —     |   —   |   ✓   |
 
-### ➔ User stories
+Authorization selalu ditegakkan server-side. Wrong-role PWA hanya membantu navigasi dan tidak dianggap security boundary.
 
-**1. Transaction management**
-- **Membuat transaksi:** Sebagai Kasir, saya ingin membuat transaksi baru dengan memasukkan produk dan jumlah barang, sehingga saya dapat memproses pembelian pelanggan.
-- **Melihat total transaksi:** Sebagai Kasir, saya ingin melihat daftar item, harga, jumlah, dan total transaksi sebelum melakukan konfirmasi, sehingga saya dapat memastikan transaksi sudah benar.
-- **Memilih metode pembayaran:** Sebagai Kasir, saya ingin memilih metode pembayaran Cash, Static QRIS, atau Transfer, sehingga transaksi dapat diproses sesuai metode pembayaran pelanggan.
+## Auth, merchant, dan device
 
-**2. Offline transaction**
-- **Membuat transaksi ketika offline:** Sebagai Kasir, saya ingin tetap membuat transaksi ketika tidak ada koneksi internet, sehingga aktivitas penjualan tidak berhenti ketika terjadi gangguan jaringan.
-- **Menyimpan transaksi secara lokal:** Sebagai Kasir, saya ingin transaksi offline tersimpan secara persisten pada perangkat, sehingga transaksi tidak hilang ketika aplikasi ditutup atau perangkat di restart.
-- **Melihat status transaksi offline:** Sebagai Kasir, saya ingin mengetahui bahwa transaksi saya masih berstatus Provisional, sehingga saya dapat membedakannya dari transaksi yang sudah dikonfirmasi backend.
+| ID         | Requirement                                                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-AUTH-01 | Online Owner registration membuat merchant baru dan tepat satu primary Owner.                                                             |
+| FR-AUTH-02 | Semua role login dengan email/password; password disimpan sebagai strong password hash.                                                   |
+| FR-AUTH-03 | Owner dapat membuat, menonaktifkan, dan mengganti password akun Entry/Operator di merchant yang sama.                                     |
+| FR-AUTH-04 | Tidak ada public API untuk membuat Owner kedua; Owner provisioning recovery hanya melalui trusted CLI.                                    |
+| FR-AUTH-05 | Access token hidup 15 menit di memory; rotating refresh session hidup maksimal tujuh hari melalui secure HttpOnly cookie.                 |
+| FR-AUTH-06 | Login/refresh Operator menerbitkan signed offline lease tujuh hari yang terikat pada merchant, user, dan device.                          |
+| FR-AUTH-07 | Device adalah shared merchant counter. Operator identity berasal dari session aktif, bukan user yang mendaftarkan device.                 |
+| FR-AUTH-08 | Browser restart offline boleh membuka kembali Operator terakhir selama lease valid; pergantian Operator memerlukan online authentication. |
+| FR-AUTH-09 | Logout, deactivation, password change, dan device revoke menginvalidasi session terkait tanpa menghapus confirmed local sale atau outbox. |
+| FR-AUTH-10 | Satu merchant hanya memiliki satu active primary Owner dan Owner tidak boleh menonaktifkan dirinya melalui normal API.                    |
 
-**3. Synchronization**
-- **Mendeteksi koneksi kembali:** Sebagai Kasir, saya ingin sistem mendeteksi ketika koneksi internet kembali tersedia, sehingga transaksi Provisional dapat diproses untuk synchronization.
-- **Melakukan synchronization:** Sebagai Kasir, saya ingin transaksi Provisional yang belum tersinkron dikirim ke backend ketika koneksi tersedia, sehingga transaksi offline akhirnya tercatat di sistem pusat.
-- **Melakukan synchronization secara bertahap:** Sebagai System, saya ingin mengirim transaksi Provisional secara batch melalui message queue, sehingga banyak transaksi dari periode offline yang panjang dapat diproses tanpa membebani backend sekaligus.
+## Catalog dan inventory
 
-**4. Duplicate & lost transaction**
-- **Mencegah duplikat transaksi:** Sebagai System, saya ingin memeriksa identitas unik transaksi ketika synchronization, sehingga transaksi yang sama tidak tercatat lebih dari satu kali.
-- **Mengulang transaksi yang gagal:** Sebagai System, saya ingin dapat melakukan retry terhadap transaksi yang gagal dikirim atau diproses, sehingga transaksi tidak hilang akibat gangguan koneksi.
-- **Melanjutkan synchronization:** Sebagai System, saya ingin melanjutkan synchronization dari transaksi terakhir yang belum berhasil diproses, sehingga transaksi yang sudah berhasil tidak perlu dikirim ulang.
+| ID        | Requirement                                                                                                                                |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| FR-CAT-01 | Entry/Owner dapat membuat, mengubah, mengarsipkan, dan memulihkan product merchant sendiri.                                                |
+| FR-CAT-02 | Product memuat stable ID, merchant-unique SKU, name, integer-rupiah price, image, active/archive state, dan monotonic catalog version.     |
+| FR-CAT-03 | Operator menyimpan last-known active catalog untuk checkout offline.                                                                       |
+| FR-CAT-04 | Backend menerima historical snapshot dari stale offline catalog selama product berasal dari merchant yang sama, termasuk setelah archived. |
+| FR-CAT-05 | Backend memvalidasi item arithmetic, tetapi tidak melakukan repricing terhadap historical offline sale.                                    |
+| FR-INV-01 | Entry/Owner dapat membuat stock adjustment dengan reason; setiap movement immutable dan auditable.                                         |
+| FR-INV-02 | Tidak ada real-time reservation lintas device. Stock sale diterapkan setelah settlement melalui idempotent worker.                         |
+| FR-INV-03 | Stock shortage menghasilkan sync conflict, bukan silently dropping atau mutating sale.                                                     |
 
-**5. Backend confirmation**
-- **Validasi transaksi:** Sebagai System, saya ingin memvalidasi transaksi sebelum menyimpannya sebagai transaksi confirmed, sehingga hanya transaksi yang valid yang masuk ke backend.
-- **Konfirmasi transaksi:** Sebagai System, saya ingin mengubah transaksi yang berhasil divalidasi menjadi Confirmed, sehingga transaksi tersebut menjadi transaksi resmi di backend.
-- **Immutable transaksi:** Sebagai System, saya ingin mencegah Kasir mengubah atau menghapus transaksi yang telah dikonfirmasi backend, sehingga integritas historical transaction tetap terjaga.
+## Offline checkout dan durable sync
 
-**6. Conflict & reconciliation**
-- **Mendeteksi konflik:** Sebagai System, saya ingin mendeteksi conflict ketika synchronization, sehingga transaksi yang tidak dapat diterima backend tidak langsung dianggap berhasil.
-- **Melihat transaksi konflik:** Sebagai Kasir, saya ingin mengetahui transaksi yang gagal disinkronisasikan beserta alasannya, sehingga saya dapat mengetahui bahwa transaksi tersebut belum menjadi transaksi confirmed.
-- **Reconciliation:** Sebagai Admin, saya ingin menangani transaksi yang mengalami conflict atau kesalahan setelah synchronization, sehingga transaksi tersebut dapat diselesaikan dengan benar.
+| ID         | Requirement                                                                                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| FR-SYNC-01 | Operator dapat membuat dan locally confirm sale tanpa network request.                                                                                                                     |
+| FR-SYNC-02 | Transaction, item/payment snapshot, local stock projection, dan outbox ditulis atomically sebelum receipt tampil.                                                                          |
+| FR-SYNC-03 | Setiap sale memakai stable UUID v4 atau v7; semua retry memakai exact payload yang sama.                                                                                                   |
+| FR-SYNC-04 | Client mengirim maksimal 25 item per batch; API menerima maksimal 100.                                                                                                                     |
+| FR-SYNC-05 | Request-shape validation bersifat all-or-nothing. Malformed item menolak batch sebelum receipt dibuat/publish.                                                                             |
+| FR-SYNC-06 | API membuat/reuse durable receipt lalu publish persistent message memakai publisher confirm. HTTP `200` berarti queued, bukan settled.                                                     |
+| FR-SYNC-07 | Uniqueness boundary `(device_id, offline_uuid)` plus canonical payload hash: duplicate-identical idempotent; duplicate-different menolak seluruh batch `409 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
+| FR-SYNC-08 | Client polling receipt dan memetakan `QUEUED                                                                                                                                               | PROCESSING | SYNCED | CONFLICT | FAILED` ke local delivery state. |
+| FR-SYNC-09 | Consumer ACK hanya setelah PostgreSQL commit. Transient failure retry 5/30/120 detik; permanent failure langsung DLQ.                                                                      |
+| FR-SYNC-10 | Receipt dispatcher memulihkan receipt yang tersimpan tetapi belum terpublish. Rabbit outage menghasilkan retryable `503` pada sync tanpa mematikan REST non-sync.                          |
+| FR-SYNC-11 | DLQ consumer menandai receipt `FAILED`; Owner melihat failure dan hanya dapat retry error yang diklasifikasikan retryable.                                                                 |
+| FR-SYNC-12 | Terminal delivery membersihkan outbox delivery, tetapi immutable local transaction/receipt history tetap tersedia.                                                                         |
 
-**7. Correction / void**
-- **Void transaksi sebelum confirmation:** Sebagai Kasir, saya ingin membatalkan transaksi yang masih berada dalam status yang memungkinkan pembatalan, sehingga kesalahan transaksi dapat diperbaiki sebelum menjadi transaksi final.
-- **Correction setelah confirmation:** Sebagai Admin, saya ingin melakukan correction melalui exception workflow terhadap transaksi yang sudah confirmed ketika memang diperlukan.
+## Transaction dan reconciliation
 
-**8. Inventory**
-- **Update inventory setelah confirmation:** Sebagai System, saya ingin mengurangi inventory setelah transaksi dikonfirmasi backend, sehingga stok mencerminkan transaksi yang telah diterima sistem pusat.
+| ID        | Requirement                                                                                                                                               |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-TXN-01 | Confirmed ledger row dan item/payment snapshot bersifat append-only.                                                                                      |
+| FR-TXN-02 | Item menyimpan product ID, name, SKU, unit price, quantity, subtotal, dan catalog version snapshot. Money memakai integer rupiah.                         |
+| FR-TXN-03 | Conflict shortage dapat di-confirm Owner (negative stock + discrepancy, exactly once) atau di-void (tanpa stock movement).                                |
+| FR-TXN-04 | Void/correction atas confirmed transaction membuat `TransactionCorrection`; original row tidak diubah.                                                    |
+| FR-TXN-05 | API dan reporting menampilkan effective status/net effect dengan memperhitungkan correction chain.                                                        |
+| FR-PAY-01 | Cash langsung `VERIFIED`; Static QRIS/Bank Transfer mulai dari `PENDING`.                                                                                 |
+| FR-PAY-02 | Owner memeriksa payment `PENDING`: pembayaran valid menjadi `RECONCILED`, sedangkan pembayaran tidak masuk/tidak valid menjadi `FAILED`.                  |
+| FR-PAY-03 | Payment `FAILED` tidak mengubah transaction asli. Owner memakai append-only void/correction untuk membatalkan efek ledger dan reporting secara auditable. |
 
-**9. Payment**
-- **Cash:** Sebagai Kasir, saya ingin mengkonfirmasi pembayaran Cash secara lokal ketika offline, sehingga transaksi Cash tetap dapat dilakukan tanpa internet.
-- **Static QRIS:** Sebagai Kasir, saya ingin menggunakan Static QRIS ketika offline, sehingga pelanggan tetap dapat melakukan pembayaran melalui QR yang telah tersedia.
-- **Transfer:** Sebagai Kasir, saya ingin mencatat pembayaran Transfer berdasarkan konfirmasi dari sumber eksternal, sehingga transaksi tetap dapat dicatat meskipun POS tidak dapat melakukan verifikasi transfer secara langsung.
+## Owner reporting dan audit
 
-### ➔ Use case
+| ID        | Requirement                                                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-REP-01 | Confirmed/effective transaction mengeluarkan PostgreSQL outbox event untuk reporting projection terpisah dari inventory event.               |
+| FR-REP-02 | Projection daily/product idempotent pada canonical transaction identity dan replay-safe.                                                     |
+| FR-REP-03 | Dashboard Owner menyediakan gross/net sales, transaction count, AOV, daily series, top products, `data_as_of`, dan `projection_lag_seconds`. |
+| FR-REP-04 | Range default 30 hari, maksimum 90 hari, mengikuti timezone merchant.                                                                        |
+| FR-AUD-01 | User/device/catalog/stock/conflict/payment/void/correction mutations menghasilkan merchant-scoped audit event tanpa secret.                  |
 
-| ID Use Case | Actor |
-|---|---|
-| UC-01 Login | Kasir / Admin |
-| UC-02 Create Transaction | Kasir |
-| UC-03 Add Product to Transaction | Kasir |
-| UC-04 Select Payment Method | Kasir |
-| UC-05 Confirm Transaction Online | Kasir |
-| UC-06 Save Provisional Transaction | System |
-| UC-07 Detect Connection Recovery | System |
-| UC-08 Synchronize Transaction | System |
-| UC-9 Queue Sync Job | System |
-| UC-10 Validate Transaction | Backend |
-| UC-11 Check Duplicate Transaction | Backend |
-| UC-12 Confirm Transaction | Backend |
-| UC-13 Update Inventory | Backend |
-| UC-14 Mark Transaction as Settled | System |
-| UC-15 Detect Synchronization Conflict | Backend |
-| UC-16 Retry Failed Synchronization | System |
-| UC-17 View Provisional Transactions | Kasir |
-| UC-18 View Conflict/Reconciliation Queue | Admin |
-| UC-19 Correct Transaction | Admin |
-| UC-20 Void Transaction | Kasir/Admin |
-| UC-21 Reconcile Payment | Admin |
-| UC-22 View Transaction Status | Kasir/Admin |
+## Business rules penting
 
-## b. Role-based access definitions (Admin vs. Kasir flows)
+- Merchant/user/device dari authenticated context; request tidak bebas memilih tenant.
+- Same `offline_uuid` pada device berbeda adalah sale berbeda yang valid.
+- `X-Device-ID` authoritative; sync item tidak mengirim `id_device`.
+- Conflict bukan settled. Receipt baru terminal setelah `SYNCED`, `CONFLICT`, atau `FAILED` dan local UI harus membedakannya.
+- Non-cash tetap tercatat sebagai sale, tetapi payment-nya belum final sampai Owner melakukan reconciliation.
 
-| Role | Desc |
-|---|---|
-| Kasir / Operator | Pengguna yang melakukan proses checkout dan membuat transaksi |
-| Admin / Owner | Pengguna dengan kewenangan administratif, termasuk menangani exception/correction |
-| System / Backend | Memvalidasi, mengonfirmasi, melakukan synchronization, dan menjaga integritas data |
+## Out of scope
 
-Entry ???
-
-| Feature | Kasir / Operator | Admin / Owner |
-|---|---|---|
-| Login | ✅ | ✅ |
-| Create transaction | ✅ | - |
-| Add product to transaction | ✅ | - |
-| Process Cash | ✅ | - |
-| Process Static QRIS | ✅ | - |
-| Process Transfer | ✅ | - |
-| Confirm offline transaction | ✅ | - |
-| Confirm online transaction | ✅ | - |
-| View own transactions | ✅ | ✅ |
-| View provisional transactions | ✅ | ✅ |
-| Trigger/view synchronization | ✅ | ✅ |
-| Retry failed sync | System | System/Admin |
-| View conflict | ✅ | ✅ |
-| Resolve reconciliation | Limited | ✅ |
-| Correct confirmed transaction | ❌ | ✅ |
-| Modify confirmed transaction directly | ❌ | ❌ |
-| Delete confirmed transaction | ❌ | ❌ |
-| Exception workflow | ❌ | ✅ |
-| Inventory deduction | System | - |
-
-**Diagram: Kasir vs Admin flow**
-
-```mermaid
-flowchart TD
-    subgraph kasir
-        A1[new transaction] --> A2[process payment]
-        A2 --> A3[confirm]
-        A3 --> A4["provisional (offline)"]
-        A4 --> A5[sync]
-        A5 --> A6[confirmed]
-    end
-
-    subgraph admin
-        B1[view] --> B2[monitor]
-        B2 --> B3[conflict]
-        B3 --> B4[reconciliation]
-        B4 --> B5[correction / void]
-    end
-```
-
-## c. Workflow descriptions (e.g., "what happens when a sale is processed")
-
-**Diagram: Kasir transaction workflow**
-
-```mermaid
-flowchart TD
-    K[kasir] --> CT[create transaction]
-    CT --> AI[add item]
-    AI --> SP[select payment]
-    SP --> CF[confirm]
-    CF --> LC[Local Confirmation]
-    LC --> SDB[Save to Local DB]
-    SDB --> PR[provisional]
-    PR --> IA{Internet avail?}
-    IA -- No --> PR
-    IA -- yes --> SM[Sync Manager]
-    SM --> BT[Batch Transaction]
-    BT --> RMQ[RabbitMQ]
-    RMQ --> SW[sync worker]
-    SW --> BV{Backend Validation}
-    BV -- valid --> CFD[confirmed]
-    BV -- invalid --> REC[reconciliation]
-    CFD --> INV[inventory update]
-    INV --> SET[settled]
-    SET --> IMM[immutable]
-```
-
-**Diagram: Backend conflict handling**
-
-```mermaid
-flowchart TD
-    BE[backend] --> CFL[conflict]
-    CFL --> RR[reconciliation required]
-    CFL --> RS[reconciliation resolve]
-
-    RR --> CD[correct data]
-    RR --> VT[void transaction]
-    RR --> AEW[admin exception workflow]
-
-    RS --> CFD2[confirmed]
-    RS --> VOI[vioded]
-```
-
-**Diagram: Flow data offline to online**
-
-```mermaid
-flowchart TD
-    LDB[Local DB] --> SM2[Sync Manager]
-    SM2 --> B100[Batch 100 transaksi]
-    B100 --> RMQ2[RabbitMQ]
-    RMQ2 --> W[Worker]
-    W --> BE2[Backend]
-```
-
-**Diagram: Duplicate transaction check**
-
-```mermaid
-flowchart TD
-    CT2[Check transaction_id] --> EX{Already exists?}
-    EX -- yes --> RET[Return existing transaction]
-    RET --> DNC[do not create new transaction]
-    EX -- no --> CNT[create new transaction]
-```
+Native app, real-time stock reservation, automated bank/QRIS verification, supplier automation, AI insights, read replica, Redis, broker selain RabbitMQ, dan microservice split belum masuk release ini.

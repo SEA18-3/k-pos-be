@@ -1,104 +1,101 @@
-# K-POS User Flows & Reconciliation Lifecycle
+# K-POS User Flows
 
-Dokumen ini memetakan perjalanan (Journey) pengguna Kasir (Frontend) dan Admin/Owner (Dashboard) dari transaksi offline hingga rekonsiliasi, sesuai dengan arsitektur **Offline-First**.
+## 1. Owner onboarding dan staff provisioning
 
-## 1. Fase 1: Kasir Bertransaksi Offline (Frontend-Only)
+1. Owner mendaftar online dengan merchant name, timezone, email, dan password.
+2. Backend membuat merchant + primary Owner dalam satu PostgreSQL transaction.
+3. Owner login ke `/owner/`, lalu membuat akun Entry/Operator.
+4. Owner membuat shared device pairing code.
+5. Device di-pair online; device tidak menjadi milik permanen user pembuatnya.
+6. Mutation tercatat di audit tanpa password/pairing secret.
 
-Fase ini terjadi saat tidak ada koneksi internet (atau koneksi sangat buruk). Seluruh logika berada di Frontend (Aplikasi Tablet Kasir).
+Owner kedua tidak bisa dibuat lewat public API. Recovery/onboarding khusus memakai trusted provisioning CLI.
 
-1. **Pembuatan UUID:** Kasir membuat transaksi baru. Sistem FE membuat `offline_uuid` menggunakan algoritma UUID v4.
-2. **Checkout:** Kasir menambahkan barang ke keranjang dan memilih metode pembayaran (Cash/QRIS/Transfer).
-3. **Konfirmasi Lokal:** Kasir menekan tombol "Bayar".
-4. **Penyimpanan Lokal:** FE menyimpan transaksi ke database lokal (IndexedDB / SQLite) dengan status **PROVISIONAL** (yang nanti akan dipetakan menjadi status `PENDING` di sisi *Backend* sebelum akhirnya di-*confirm*). Layar Kasir menampilkan struk dan selesai. Pelanggan pergi membawa barang.
+## 2. Operator login dan offline reopen
 
-*Tidak ada interaksi dengan Backend (API) di Fase 1 ini.*
+1. Operator membuka paired counter dan login online.
+2. Backend memverifikasi user aktif, merchant-device binding, dan device tidak revoked.
+3. Backend memberi access token 15 menit, rotating refresh cookie, dan signed offline lease tujuh hari.
+4. PWA menyimpan access token di memory dan lease melalui secure browser persistence.
+5. Setelah browser restart tanpa internet, PWA dapat membuka last Operator session bila signature/binding/expiry valid.
+6. Pergantian Operator saat offline ditolak; user harus reconnect dan login.
 
-## 2. Fase 2: Sinkronisasi Latar Belakang (Internet Pulih)
+Logout membersihkan active cart/session setelah konfirmasi, tetapi tidak menghapus catalog cache, confirmed local transactions, receipt history, atau delivery outbox.
 
-Begitu koneksi internet terdeteksi (atau berdasarkan interval *cron job* FE), proses sinkronisasi dimulai tanpa disadari oleh Kasir.
+## 3. Offline checkout
+
+1. Operator memilih product dari last-known catalog.
+2. Cart menghitung integer-rupiah subtotal/total dan payment fields.
+3. Confirm sale membuat stable UUID v7 dan immutable item/payment snapshots.
+4. Satu IndexedDB transaction menulis sale `PROVISIONAL`, local stock projection, delivery outbox, lalu membersihkan draft.
+5. Receipt baru tampil setelah commit sukses.
+6. Jika offline, sale tetap queued. Jika online, scheduler mengambil due outbox maksimal 25.
+
+## 4. Reconnect dan settlement
 
 ```mermaid
 sequenceDiagram
-    participant FE as Frontend (Kasir)
-    participant BE as Backend API
-    participant RMQ as RabbitMQ
-    participant W as Worker (BE)
-    participant DB as PostgreSQL
+    participant O as Operator PWA
+    participant A as API
+    participant R as RabbitMQ
+    participant W as Worker
+    participant D as PostgreSQL
 
-    FE->>BE: 1. POST /sync (Kirim Array Transaksi)
-    BE->>RMQ: 2. Publish ke sync.transactions
-    RMQ-->>BE: 3. Ack Publish
-    BE-->>FE: 4. 200 OK (Batch diterima)
-    
-    note over FE, BE: API Kasir Selesai (< 50ms)
-    
-    RMQ->>W: 5. Konsumsi 1 Transaksi
-    W->>DB: 6. Cek Idempotency (id_device + offline_uuid)
-    W->>DB: 7. Validasi Stok (SELECT FOR UPDATE)
-    
-    alt Stok Cukup
-        W->>DB: 8a. INSERT Transaction (status: CONFIRMED, sync_status: SYNCED)
-    else Stok Habis
-        W->>DB: 8b. INSERT Transaction (status: PENDING, sync_status: SYNC_CONFLICT)
-    else Data Cacat / Database Mati Tiba-tiba
-        DB-->>W: 8c. ERROR (Foreign Key Failed / DB Connection Refused) -> Rollback
-        W-->>RMQ: 9. NACK -> Buang ke sync.dlq
-    end
+    O->>A: POST /sync (stable IDs + X-Device-ID)
+    A->>D: Durable receipts + hashes
+    A->>R: Persistent publish + confirm
+    A-->>O: 200 queued
+    O->>O: PROVISIONAL → QUEUED
+    R->>W: Deliver
+    W->>D: Commit ledger/effect
+    W-->>R: ACK
+    O->>A: Poll receipt UUIDs
+    A-->>O: SYNCED/CONFLICT/FAILED
 ```
 
-### Konfirmasi Akhir FE (Mencegah Infinite Retry)
-1. Setelah FE mendapat respons 200 OK dari `POST /sync`, FE **tidak langsung menghapus data lokalnya**.
-2. Beberapa saat kemudian, FE menembak `GET /transactions?id_device=DEV-1`.
-3. FE mencocokkan `offline_uuid` miliknya dengan response dari Backend.
-4. Jika UUID tersebut **ada** (baik `SYNCED` maupun `SYNC_CONFLICT`), FE menghapus/menandai data lokalnya sebagai "SETTLED".
-5. Jika UUID tersebut **tidak ada** (karena gagal masuk database akibat *error*), maka status di FE tetap `Provisional` dan FE akan terus mencoba mengirim ulang (sesuai UC-16: *Retry Failed Synchronization*).
-6. **Peran DLQ (Dead Letter Queue):** Di sisi Backend, transaksi cacat yang terus-menerus dikirim ulang oleh FE ini akan ditolak oleh *Worker* dan dilempar ke `sync.dlq`. Sebuah *DLQ Worker* akan menangkapnya dan mencatatnya ke tabel `SyncQueue` dengan status `SYNC_FAILED`. Admin/Owner dapat melihat log error ini di Dashboard untuk menginvestigasi mengapa perangkat kasir terus mengirimkan data cacat.
+Lost response aman: Operator mengirim ulang exact batch; backend reuse receipt bila hash identik. HTTP queued bukan bukti ledger sudah settled.
 
-## 3. Fase 3: Resolusi Konflik (Owner Dashboard)
+## 5. Stock conflict
 
-Fase ini dilakukan oleh Pemilik Toko (Owner) melalui *Dashboard Web* K-POS.
+1. Worker menemukan canonical stock tidak cukup.
+2. Transaction/receipt menjadi `CONFLICT`; tidak ada stock movement.
+3. Owner membuka conflict queue.
+4. **Confirm:** backend mengaplikasikan stock movement tepat sekali, mengizinkan negative stock, membuat discrepancy, dan meng-settle sale.
+5. **Void:** backend membuat effective void tanpa stock movement.
+6. Operator melihat final state pada polling berikutnya.
 
-1. **Monitoring:** Owner membuka halaman **Rekonsiliasi Transaksi**.
-   - FE Dashboard memanggil: `GET /transactions?sync_status=SYNC_CONFLICT`.
-2. **Investigasi:** Owner melihat daftar transaksi di mana kasir menerima uang, tapi stok barang tercatat kurang/habis di sistem.
-3. **Keputusan Manual:**
-   - **Setujui (Resolve - Confirm):** Owner menekan tombol "Confirm". FE menembak `POST /transactions/:id_transaction/resolve` dengan `action: CONFIRM`. Sistem Backend menerima uangnya secara resmi (stok dibiarkan minus atau sudah disesuaikan secara terpisah via fitur Adjustment).
-   - **Tolak (Resolve - Void):** Owner menekan tombol "Void". FE menembak API dengan `action: VOID`. Sistem membatalkan transaksi tersebut (uang dianggap tidak masuk, atau kasir disuruh mengembalikan uang/ganti rugi).
+## 6. Payment exception
 
-## 4. Fase 4: Rekonsiliasi Pembayaran (Payment Reconciliation)
+- Cash settled sebagai `VERIFIED`.
+- Static QRIS dan transfer mulai sebagai `PENDING` sampai diperiksa Owner.
+- Owner memilih `CONFIRM` untuk menjadikannya `RECONCILED`, atau `REJECT` untuk menjadikannya `FAILED`, beserta reason.
+- Payment `FAILED` yang perlu membatalkan efek sale dilanjutkan melalui append-only void/correction, bukan edit transaction history.
 
-Sesuai aturan *Payment Validation* (FRD.md), validasi pembayaran dibedakan berdasarkan metode:
-1. **Tunai (CASH):** Sistem langsung mengubah status *payment* menjadi `VERIFIED` saat sinkronisasi sukses, karena uang dipegang fisik oleh kasir.
-2. **Non-Tunai (STATIC_QRIS / BANK_TRANSFER):** Sistem mengatur status *payment* menjadi `PENDING` (*Operator-asserted* / membawa *residual confirmation risk*).
+## 7. Confirmed sale correction
 
-Proses rekonsiliasi dilakukan dengan langkah:
-1. Owner membuka daftar transaksi ber-status payment `PENDING`.
-2. Owner mengecek mutasi rekening di aplikasi *m-Banking*.
-3. **Jika uang terbukti masuk:** Owner menekan "Verifikasi". Status payment menjadi `VERIFIED`.
-4. **Jika penipuan (uang tidak masuk):** Owner menekan "Void". Transaksi tersebut dibatalkan (menggunakan *Exception Workflow* / Void).
+1. Owner membuka effective transaction detail.
+2. Untuk full void, backend membuat `TransactionCorrection` tanpa mengubah original confirmed row.
+3. Untuk correction, backend membuat replacement transaction dan correction bridge.
+4. Inventory event menerapkan delta idempotently.
+5. Reporting projection membalikkan effect lama dan menerapkan effect baru once-only.
+6. Audit menyimpan actor, reason, timestamp, dan referensi record.
 
-## 5. Exception Workflow: Void & Correction (Strict Immutability)
+## 8. Entry catalog change saat Operator offline
 
-*Exception Workflow* adalah alur khusus yang digunakan oleh Owner untuk menangani transaksi yang sudah terlanjur sukses (`CONFIRMED`), namun ternyata bermasalah di kemudian hari (misalnya kasir salah memasukkan barang, atau terbukti ada penipuan pembayaran).
+1. Entry mengubah price atau archive product secara online; catalog version naik.
+2. Operator offline tetap memakai snapshot lama.
+3. Backend menerima sale lama bila product ID milik merchant dan arithmetic valid.
+4. Ledger menyimpan snapshot lama; tidak direprice.
+5. Operator refresh catalog pada startup/reconnect/manual refresh.
 
-Sesuai aturan **Strict Immutability**, Backend **TIDAK AKAN MENG-UPDATE** atau menghapus baris transaksi asli di tabel `Transaction`. Statusnya akan dibiarkan `CONFIRMED` selamanya. 
-Sebagai gantinya, Backend melakukan proses *Append-Only* dengan membuat 1 catatan baru di tabel `TransactionCorrection`. 
+## 9. Rabbit outage dan recovery
 
-*Exception Workflow* terbagi menjadi dua tindakan utama:
+1. API hidup dalam degraded mode; auth/catalog/reporting yang dependensinya sehat tetap berfungsi.
+2. Sync yang belum mendapat publisher confirm mengembalikan retryable `503`.
+3. Receipt durable yang belum publish dipindai dispatcher.
+4. Setelah Rabbit pulih, dispatcher publish; duplicate delivery aman karena consumer idempotent.
+5. Tiga transient retries memakai delay 5/30/120 detik; exhaustion masuk DLQ dan receipt `FAILED`.
 
-### A. VOID (Pembatalan Total)
-Digunakan ketika transaksi sepenuhnya batal (contoh: uang transfer ternyata fiktif/penipuan, atau pelanggan mengembalikan semua barang).
-1. Owner menekan tombol Void di Dashboard. FE menembak `PATCH /transactions/:id_transaction/void`.
-2. Backend membuat entri di `TransactionCorrection`.
-3. Kolom `id_new_transaction` dibiarkan **kosong** (`null`), karena tidak ada transaksi pengganti.
-4. **Logika Stok:** Jika VOID terjadi karena penipuan/barang dibawa kabur, stok **TIDAK** dikembalikan ke *inventory* (karena wujud fisiknya sudah hilang/menjadi kerugian toko). Namun jika VOID terjadi karena *Refund* (pembeli mengembalikan barang utuh), stok baru dikembalikan (ditambah) ke *inventory*. Uang dicoret dari perhitungan pendapatan.
+## 10. Revocation dengan queued sale
 
-### B. CORRECTION (Koreksi / Revisi)
-Digunakan ketika isi transaksi salah sebagian (contoh: kasir salah pilih varian barang, harga salah input, atau salah jumlah).
-1. Owner memperbaiki isi struk di Dashboard. FE menembak `POST /transactions/:id_transaction/correct` dengan daftar barang yang sudah diperbaiki.
-2. Backend membuat **satu Transaksi Baru** (dengan ID baru) yang berisi data hasil revisi.
-3. Backend membuat entri di `TransactionCorrection`. Kolom `id_old_transaction` diisi ID transaksi yang salah, dan `id_new_transaction` diisi ID transaksi yang baru.
-4. Selisih stok antara transaksi lama dan baru disesuaikan secara otomatis oleh sistem.
-
-### Aturan Menampilkan Data (Dashboard & Reporting)
-Aplikasi *Dashboard* dan *Reporting (BI)* wajib menyembunyikan/mengabaikan transaksi lama dari perhitungan pendapatan jika ID transaksi tersebut terdaftar di kolom `id_old_transaction` pada tabel `TransactionCorrection`. Dengan arsitektur ini, jejak audit (siapa yang salah input, kapan dikoreksi, dan oleh siapa) tetap 100% terekam sempurna tanpa ada data historis yang dihapus dari *database*.
+User/device revoke mencegah session dan sync baru sesuai policy, tetapi tidak menghapus data lokal. Owner dapat mengaudit dan memulihkan/memindahkan queued sale melalui controlled support flow; data tidak silently discarded.

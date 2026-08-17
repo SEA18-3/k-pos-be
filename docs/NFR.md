@@ -1,73 +1,65 @@
 # Non-Functional Requirements
 
-## a. Performance
+Target berikut berlaku pada supported test environment yang metadata-nya disimpan bersama hasil benchmark. Angka bukan janji SLA production sebelum observability, capacity planning, backup, dan restore drill selesai.
 
-| Code | NFR | Requirement |
-|---|---|---|
-| NFR-PER-01 | Transaction responsiveness | Transaksi tercatat lokal & feedback ke Kasir instan (< 100 ms), tidak bergantung network latency |
-| NFR-PER-02 | Backend transaction processing | 1 transaksi (sudah di-consume worker dari queue): validasi + duplicate check + confirm + inventory update selesai < 200 ms |
-| NFR-PER-03 | Batch sync performance | 1 batch (maks. 100 transaksi) selesai diproses < 5 detik, dengan worker berjalan paralel |
+## Performance dan convergence
 
-*100ms mengacu pada ambang "instant" (Nielsen Norman Group, response time UX research); 200 ms digunakan sebagai target latency backend untuk menjaga queue dapat diproses dengan cepat*
+| ID          | Target                                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| NFR-PERF-01 | Local offline checkout p95 `< 500 ms`, termasuk atomic IndexedDB commit.                                    |
+| NFR-PERF-02 | `POST /api/v1/sync` durable enqueue p95 `< 500 ms` saat dependency sehat.                                   |
+| NFR-PERF-03 | Rabbit-to-ledger settlement p95 `< 750 ms` untuk normal message.                                            |
+| NFR-PERF-04 | Owner dashboard p95 `< 1.5 s` untuk range sampai 90 hari.                                                   |
+| NFR-PERF-05 | Reporting projection lag p95 `< 30 s` pada mixed-load acceptance profile.                                   |
+| NFR-PERF-06 | 100% valid receipts mencapai terminal state di dalam test window; tidak ada lost/duplicate business effect. |
 
-## b. Availability
+## Scale profile
 
-| Code | NFR | Requirement |
-|---|---|---|
-| NFR-AVA-01 | Backend uptime | Target 99.5%  availability |
-| NFR-AVA-02 | Local/offline transaction availability | Target 99.9%, dengan aplikasi tetap dapat melakukan transaksi tanpa koneksi internet. |
+- CI smoke: 50 merchant selama 15–30 detik dengan sync writer, Entry mutation, Owner reader, dan reconciliation activity.
+- Capacity profile: 500 merchant selama lima menit melalui command eksplisit, bukan setiap PR.
+- Connection pool, Rabbit prefetch, batch limit, concurrency, dan retry delay harus configurable dan dicatat dalam benchmark artifact.
+- Reporting query dan worker backlog tidak boleh menghabiskan operational connection budget.
 
-*Backend uptime 99.5% karena downtime backend tidak memblokir operasional Kasir. Sedangkan di sisi local/offline target 99.9% karena kegagalan di sisi ini langsung menghentikan aktivitas transaksi.*
+## Availability dan resilience
 
-## c. Scalability
+| ID         | Requirement                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| NFR-RES-01 | Operator checkout tetap tersedia selama backend/network outage selama offline lease valid.                                     |
+| NFR-RES-02 | API dapat start degraded saat Rabbit unavailable; health menunjukkan dependency status dan sync mengembalikan retryable `503`. |
+| NFR-RES-03 | Rabbit message persistent, queue durable, publisher confirm aktif, dan volume broker persistent pada hosted demo.              |
+| NFR-RES-04 | Consumer ACK hanya sesudah DB commit; transient retry menggunakan TTL queues 5/30/120 detik lalu DLQ.                          |
+| NFR-RES-05 | Receipt dispatcher recovery membuat DB-receipt-before-publish gap dapat dipulihkan tanpa duplicate effect.                     |
+| NFR-RES-06 | Shutdown berhenti menerima traffic, menyelesaikan in-flight work dalam bounded grace period, lalu menutup consumer/pool.       |
 
-| Code | NFR | Requirement |
-|---|---|---|
-| NFR-SCA-01 | Merchant growth capacity | Sistem mendukung pertumbuhan hingga 500+ merchant (1.500+ device pada rasio 3 device/merchant) tanpa perubahan arsitektur |
-| NFR-SCA-02 | Horizontal scalability | Backend service dapat ditambah instance secara horizontal ketika beban meningkat |
-| NFR-SCA-03 | Data scalability | Skema database dirancang dengan indexing yang tepat agar query tetap performant seiring bertambahnya volume data |
-| NFR-SCA-04 | Mass reconnection resilience | Sync success rate ≥99% saat 150–300 device reconnect bersamaan, dengan backlog ±2.250–4.500 transaksi. |
+## Security dan privacy
 
-*Angka 500+ merchant diambil langsung dari Case Study, rasio 3 device/merchant adalah asumsi wajar untuk skala warung/SME.*
-*Skenario mass reconnection menggunakan asumsi regional outage, di mana 50–100 merchant dalam satu wilayah terdampak secara bersamaan. Dengan asumsi 3 device per merchant dan ±15 transaksi/device selama outage, backlog yang terbentuk adalah sekitar 2.250–4.500 transaksi. Angka tersebut merupakan design assumption dan akan divalidasi melalui load testing.*
+- Password di-hash memakai Argon2id atau bcrypt dengan cost yang direview; raw password tidak pernah dilog.
+- Access token 15 menit disimpan di memory. Refresh token hanya lewat rotating HttpOnly, Secure, SameSite cookie dan server-side hashed session.
+- Offline lease ditandatangani, maksimal tujuh hari, dan terikat merchant/user/device.
+- Rate limit minimal: login per IP+identity, refresh per session, sync per device, Owner mutation per session.
+- Seluruh business access tenant-scoped dari verified identity; IDOR diuji pada semua role.
+- CORS allow-list eksplisit; production wajib TLS, secret manager, security headers, dependency scanning, dan audit log redaction.
+- Raw password/token/device secret tidak masuk audit. Payment reference diperlakukan sensitif dan tidak dikirim ke telemetry pihak ketiga.
 
-## d. Security
+## Consistency
 
-| Code | NFR | Requirement |
-|---|---|---|
-| NFR-SEC-01 | Credential security | Password disimpan menggunakan secure hashing (bcrypt/argon2) |
-| NFR-SEC-02 | Data in transit | Komunikasi Kasir–backend saat sync menggunakan HTTPS/TLS |
-| NFR-SEC-03 | Token expiry & offline compatibility | Access token JWT masa berlaku pendek (15-30 menit) + refresh mechanism, berlaku hanya saat online. Akses offline pakai session/credential lokal yang tidak bergantung validasi expiry real-time |
-| NFR-SEC-04 | SQL Injection prevention | Parameterized query/ORM, tidak ada raw query dari input user |
-| NFR-SEC-05 | XSS prevention | Sanitize/encode semua output ke UI |
-| NFR-SEC-06 | Brute-force protection | Rate limiting pada endpoint login |
-| NFR-SEC-07 | Input validation | Validasi semua request body di backend |
+- PostgreSQL transaction memberi atomic ledger effect.
+- Delivery at-least-once; idempotency dan payload hash memberi exactly-once business effect.
+- Inventory dan reporting eventual tetapi replay-safe.
+- Canonical transaction append-only; correction mengubah effective view, bukan history.
+- Queue bukan source of truth; receipt/ledger di PostgreSQL adalah durable state yang dapat direkonsiliasi.
 
-*Mengikuti security best practices dan mengacu pada OWASP Top 10 sebagai acuan risiko keamanan aplikasi.*
+## Maintainability
 
-## e. Maintainability
+- Nest module boundaries mengikuti business capability; controller hanya auth/parse/call/serialize.
+- Prisma access dan transaction boundary berada di repository/application service, bukan controller.
+- DTO/OpenAPI `snake_case` konsisten; internal TypeScript boleh `camelCase` dengan explicit mapper.
+- Structured logs selalu menyertakan `request_id`, dan bila relevan `merchant_id`, `device_id`, `offline_uuid`, `receipt_id`, tanpa secret.
+- Generated OpenAPI committed dan drift-check di CI. Frontend mem-pin backend commit/spec version.
+- Minimum verification: format, lint, typecheck, unit, PostgreSQL/Rabbit integration, OpenAPI drift, dan affected E2E.
 
-| Code | NFR | Requirement |
-|---|---|---|
-| NFR-MAI-01 | Modular architecture | Pemisahan jelas: Local Storage, Sync Manager, Message Queue (RabbitMQ), Sync Worker, Backend Validation |
-| NFR-MAI-02 | Logging | Structured logging: create, save provisional, sync attempt, validation, conflict |
-| NFR-MAI-03 | Clean code | Konsisten naming, service layer terpisah dari controller, tidak ada hardcoded logic |
-| NFR-MAI-04 | Documentation | API contract, arsitektur, ERD, deployment, dan konfigurasi terdokumentasi |
-| NFR-MAI-05 | Observability | Sync failure, retry, dan reconciliation dapat dimonitor |
-| NFR-MAI-06 | Testability | Core transaction/sync logic dapat diuji unit & integration test |
-| NFR-MAI-07 | CI/CD | Automated build/test/deploy pipeline (GitHub Actions) |
+## Operations
 
-## f. Reliability
-
-| Code | NFR | Requirement |
-|---|---|---|
-| NFR-REL-01 | Sync success rate | Minimal 99% transaksi Provisional berhasil menjadi Confirmed ketika device online |
-| NFR-REL-02 | Data integrity under concurrency | Tidak terjadi inkonsistensi stok akibat race condition pada concurrent transaction (row-level locking `SELECT ... FOR UPDATE` + `transaction_id` unik sebagai idempotency key) |
-
----
-
-## Sumber
-
-- [Google SRE Book, Service Level Objectives](https://sre.google/sre-book/service-level-objectives/) 
-- [OWASP Top 10, Web Application Security Risks](https://owasp.org/www-project-top-ten/)
-- [Nielsen Norman Group, Response Time Limits](https://www.nngroup.com/articles/response-times-3-important-limits/)
+- `/health` melaporkan API, PostgreSQL, Rabbit, dan reporting freshness secara terpisah; degraded bukan selalu process-down.
+- `/metrics` mencakup request latency/error, Rabbit publish/consume/retry/DLQ, receipt age/depth, settlement latency, projection lag, dan pool wait.
+- Production memerlukan managed backup/PITR, restore drill, alerting, log retention, secret rotation, dan capacity budget. Demo hijau tidak sama dengan production-ready.

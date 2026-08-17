@@ -1,274 +1,77 @@
-# Sync Without Signal: Offline-First Transaction Consistency for a Multi-App POS Platform
-### COMPFEST SEA 18 — Final Project Case Study Summary
+# K-POS Project Overview
 
-## 1. Project Overview
+K-POS adalah platform point-of-sale multi-tenant untuk merchant yang harus tetap berjualan saat internet tidak stabil. Produk dibagi menjadi tiga PWA sesuai access pattern, tetapi memakai satu backend modular, satu PostgreSQL, dan RabbitMQ untuk settlement asynchronous.
 
-| Item | Detail |
-|---|---|
-| **Program** | Software Engineering Academy, COMPFEST 18 × PT Skalar Solusi Digital |
-| **Assignment** | Final Project SEA 18 — one of three selectable case studies |
-| **Selected Case** | Case Study 2: *Sync Without Signal: Offline-First Transaction Consistency for a Multi-App POS Platform* |
-| **GitHub Repository Deadline** | 23:59 WIB, 21 August 2025 |
-| **Presentation File Deadline** | 06:00 WIB, 22 August 2025 |
+> Status dokumen: **canonical target contract**. Branch `develop` belum tentu mengimplementasikan seluruh behavior di dokumen ini. Progress nyata dicatat di [implementation plan](implementation_plan.md).
 
-### Description (from the Final Project brief)
-Following the successful delivery of the SEAPEDIA application, SEAPEDIA's CEO, Aca, showcased the team's work to his network, leading to a surge in new project inquiries. As a small team committed to quality, the team has capacity to accept only one new case. The objective is to conceptualize, justify, and build a high-quality application prototype for the chosen project, requiring seamless team collaboration, a strict focus on core functionalities, and a commitment to a robust, user-centric solution.
+## Product promise
 
-### Project Case Options
-1. *Scaling Without Overspending* — Access-Pattern-Aware Architecture for a Multi-Actor POS Platform
-2. **→ *Sync Without Signal* — Offline-First Transaction Consistency for a Multi-App POS Platform (this case)**
-3. *Sell Without Overselling* — High-Concurrency Ticket Reservation Platform
+Operator dapat menyelesaikan checkout secara lokal tanpa network round-trip. Saat koneksi kembali, transaksi dikirim setidaknya sekali, diproses secara durable, dan menghasilkan business effect tepat sekali. Owner mendapat visibility atas conflict, payment exception, audit, dan reporting tanpa membuat checkout bergantung pada workload analitik.
 
-### General Rules
-1. Each group chooses one case. Each case can only be chosen by a maximum of 2 groups. Cases are booked via the case-booking link in the brief.
-2. Each group creates a final project GitHub repository.
-3. Every application developed by the group must have the following features:
-   - **User management**: account management consisting of login, logout, new account registration, and permission settings.
-   - **Business/Government Transactions**: features related to the transaction process of the application idea (e.g., in an e-commerce application, creating/changing items and making item purchases).
-4. On the last day of the academy, each team must present and justify their applications. Each team may prepare a slideshow and do a live feature demo of the prototype.
+## Actor dan aplikasi
 
----
+| Role       | Aplikasi            | Tanggung jawab                                                                            |
+| ---------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| `OPERATOR` | Operator PWA `/`    | Checkout offline, local receipt, sync status                                              |
+| `ENTRY`    | Entry PWA `/entry/` | Catalog, price, image, archive, stock adjustment/history                                  |
+| `OWNER`    | Owner PWA `/owner/` | Merchant onboarding, user/device admin, conflict/payment reconciliation, audit, reporting |
 
-## 2. Case Context (Case Study §1–2)
+Hanya ada tiga role tersebut. Istilah “admin” berarti capability milik `OWNER`, bukan role keempat. Satu merchant memiliki tepat satu active primary Owner. Owner dapat membuat akun `ENTRY` dan `OPERATOR`, tetapi tidak dapat membuat Owner lain lewat public API.
 
-Application K is a POS and business intelligence (BI) platform for Indonesian SMEs. It supports **three operational roles through separate applications: Entry, Owner, and Operator**. Among these, the **Operator** application is responsible for handling checkout transactions, making it the most business-critical component because it is used directly at the point of sale, where internet connectivity is often unstable.
+## Core invariants
 
-*(The case study does not describe the specific functionality of the Entry and Owner applications beyond naming them as the platform's other two operational-role applications.)*
+1. **Offline checkout is local-first.** Transaction, payment snapshot, item snapshot, dan delivery outbox disimpan atomically di IndexedDB sebelum receipt ditampilkan.
+2. **At-least-once transport, exactly-once effect.** Retry memakai `(device_id, offline_uuid)` dan canonical payload hash yang stabil.
+3. **Queued bukan settled.** HTTP `200` dari sync hanya berarti durable receipt diterima untuk dipublish; client polling sampai `SYNCED`, `CONFLICT`, atau `FAILED`.
+4. **Ledger append-only.** Confirmed transaction tidak diedit. Void/correction membuat record baru dan API menghitung effective status.
+5. **Inventory eventual.** Stock diterapkan worker setelah settlement; tidak ada cross-device stock reservation.
+6. **Tenant identity server-owned.** Merchant, user, dan device diambil dari authenticated session dan verified device binding, bukan dipercaya dari request body.
+7. **Operational path tetap terlindungi.** Reporting, reconciliation, dan Rabbit outage tidak boleh menghentikan login/catalog read yang masih sehat; sync menolak sementara dengan retryable `503` bila durable publish belum tersedia.
 
-### Constraints — ADR-006
+## Canonical lifecycle
 
-This case study follows a fixed architectural decision (**ADR-006**): the checkout application must continue operating under an **offline-first onboarding model for the next six months, with no self-serve fallback**. This constraint reflects the realities of Indonesian SME retail environments and is to be treated as a given throughout the analysis; teams must design their solution within this constraint.
+```mermaid
+stateDiagram-v2
+    [*] --> PROVISIONAL: checkout lokal atomik
+    PROVISIONAL --> QUEUED: receipt durable diterima
+    QUEUED --> SETTLED: backend CONFIRMED
+    QUEUED --> CONFLICT: stok tidak cukup
+    QUEUED --> FAILED: permanent/DLQ
+    CONFLICT --> SETTLED: Owner confirm
+    CONFLICT --> VOIDED: Owner void
+    FAILED --> QUEUED: Owner retry error retryable
+```
 
-**Key Takeaways (as stated in the case study):**
-- POS + BI platform for Indonesian SMEs.
-- Three applications: Entry, Owner, and Operator.
-- Operator handles checkout transactions in unstable network environments.
-- ADR-006 fixes offline-first onboarding for six months with no self-serve fallback.
-- Teams must design their solution within this constraint.
+State di atas adalah **local delivery state**. Canonical ledger memakai original transaction `PENDING` atau `CONFIRMED`; void/correction disimpan append-only dan menghasilkan effective status terpisah.
 
----
+## Technology boundary
 
-## 3. Background (Case Study §3)
+- NestJS API + Rabbit consumer dalam satu process/deployment.
+- PostgreSQL sebagai ledger, idempotency store, outbox, dan reporting read-model store.
+- RabbitMQ sebagai durable delivery pipeline; bukan source of truth.
+- Prisma untuk schema/data access backend.
+- React + Vite PWA untuk Operator, Entry, dan Owner.
+- OpenAPI snapshot sebagai normative cross-repository contract; wire `snake_case`, frontend domain `camelCase` melalui explicit mapper.
 
-Application K is a POS and BI platform for Indonesian SMEs, where unreliable internet connectivity is a daily operational reality rather than an exception. The checkout process must continue even during network outages to avoid disrupting sales.
+## Repository relationship
 
-### Payment Methods
-| Method | Verification Model (as stated) |
-|---|---|
-| **Cash** | Confirmed directly by the operator without relying on external systems. |
-| **Static QRIS** | Uses a pre-generated QR code that can be displayed without an internet connection. |
-| **Bank Transfer** | Verified manually by the operator using external confirmation, such as a banking app, e-wallet notification, or SMS. |
+- `k-pos-be`: canonical backend, migrations, Rabbit consumers, generated OpenAPI.
+- frontend repository: tiga PWA, pinned OpenAPI snapshot, generated client, IndexedDB sync engine.
 
-### Transaction Lifecycle
-Transactions follow a simple lifecycle of **Pending, Confirmed, and Voided**.
-- Once confirmed by the backend, a transaction cannot be modified by operators, while corrections are restricted to administrators as an exception workflow.
-- Inventory is deducted only after a transaction is confirmed, reflecting an accepted level of **eventual consistency** rather than real-time stock reservation.
-- Multiple operators may process transactions simultaneously for the same merchant, including while working independently on different devices without network connectivity.
+Urutan perubahan lintas repo adalah backend contract → generated OpenAPI → pinned frontend client → cross-repo E2E. Fastify prototype lama bukan backend alternatif dan dihapus setelah NestJS mencapai parity.
 
----
+## Scope release ini
 
-## 4. Problem Statement (Case Study §4)
+Termasuk auth/session/offline lease, shared device pairing, offline transaction sync, durable receipts, retry/DLQ, conflict resolution, append-only correction, payment exception reconciliation, product/inventory management, audit, dan Owner sales reporting.
 
-Design an offline-first synchronization architecture for the Operator (POS) application that allows transactions to be created and locally confirmed while offline, then synchronized with the backend when connectivity is restored. The design must prevent duplicate or lost transactions, preserve backend-side transaction immutability, and support concurrent offline transactions from multiple devices under the same merchant.
+Tidak termasuk real-time stock reservation, microservices, read replica, Redis, external AI/business insight, automated payment gateway verification, native mobile app, atau multi-Owner merchant.
 
-A transaction confirmed while offline is **provisional** until accepted by the backend. This distinction between provisional and settled transactions must be explicit in both the synchronization logic and the operator UI.
+## Definition of done
 
-**Key Requirements (as stated in the case study):**
-- Offline transaction creation and local confirmation.
-- Reliable synchronization after reconnection.
-- No duplicate or lost transactions.
-- Backend-side transaction immutability after sync.
-- Support concurrent multi-device offline operation.
-- Clearly distinguish provisional and settled transactions.
+- Tidak ada lost atau duplicate business effect pada retry, lost response, reconnect massal, dan multi-device concurrency.
+- Semua valid sync receipt mencapai terminal state dalam acceptance window.
+- Role dan tenant isolation berlaku di controller, service, repository, dan test.
+- Reporting eventually converge ke canonical ledger dan menunjukkan freshness secara jujur.
+- OpenAPI, backend implementation, generated frontend client, docs, dan E2E tidak drift.
 
----
-
-## 5. Data & Constraints (Case Study §5)
-
-### Business
-- Expected to scale from an early pilot to 500+ merchants.
-- Multiple operators may process transactions simultaneously under the same merchant.
-- Internet connectivity is frequently intermittent.
-
-### System Constraints
-- Backend-confirmed transactions are immutable.
-- Cash and Static QRIS payments must remain fully operable during connectivity outages.
-- Transfer payments are verified by the operator using an external confirmation (e.g., bank app, e-wallet, or SMS), not by the POS system.
-- Inventory is deducted only after transaction confirmation. Real-time stock reservation is out of scope.
-- Offline-first onboarding remains mandatory for the first six months, with no self-serve alternative.
-
-### Payment Validation
-- **System-verifiable**: Cash.
-- **Operator-asserted**: Static QRIS and Transfer. Both rely on operator verification of an external payment signal and should be treated as carrying residual confirmation risk.
-
----
-
-## 6. Use Cases
-
-*(Grouped restatement of the explicit requirements in Section 4 above and the General Rules in Section 1, organized as use cases. Each item corresponds directly to stated text — no additional functionality has been introduced.)*
-
-### 6.1 User Management (General Rule #3, Final Project brief)
-- **UC-01**: User Registration
-- **UC-02**: User Login
-- **UC-03**: User Logout
-- **UC-04**: Permission Settings
-
-### 6.2 Checkout / Transaction & Sync (Case Study, Problem Statement + Background)
-- **UC-05**: Create Transaction Offline
-- **UC-06**: Locally Confirm Transaction (offline) — resulting state is **provisional**
-- **UC-07**: Synchronize Transaction with Backend upon Reconnection
-- **UC-08**: Void Transaction
-- **UC-09**: Administrator Correction of a Backend-Confirmed Transaction (exception workflow)
-- **UC-10**: Concurrent Transaction Processing by Multiple Operators/Devices under the Same Merchant (including while offline)
-- **UC-11**: View/Distinguish Transaction Status as Provisional vs. Backend-Confirmed
-- **UC-12**: Process Cash Payment (system-verifiable, offline-operable)
-- **UC-13**: Process Static QRIS Payment (offline-operable, operator-asserted)
-- **UC-14**: Process Bank Transfer Payment (operator manually verifies via external confirmation)
-- **UC-15**: Reconcile an Operator-Confirmed Payment (Static QRIS or Transfer) Later Found to Be Incorrect
-- **UC-16**: Deduct Inventory upon Transaction Confirmation (eventual consistency)
-
----
-
-## 7. Functional Requirements (FR)
-
-*(Restated directly from the case study's Problem Statement, Background, Data & Constraints, and Deliverables sections.)*
-
-| ID | Requirement |
-|---|---|
-| FR-01 | The application must support login, logout, new account registration, and permission settings (per Final Project General Rule #3). |
-| FR-02 | The application must have features related to the transaction process of the chosen application idea (per Final Project General Rule #3). |
-| FR-03 | The Operator application shall allow transactions to be created and locally confirmed while offline. |
-| FR-04 | The Operator application shall synchronize offline transactions with the backend when connectivity is restored. |
-| FR-05 | The design must prevent duplicate or lost transactions. |
-| FR-06 | The design must preserve backend-side transaction immutability after sync. |
-| FR-07 | The design must support concurrent offline transactions from multiple devices under the same merchant. |
-| FR-08 | A transaction confirmed while offline shall be treated as provisional until accepted by the backend. |
-| FR-09 | The distinction between provisional and settled transactions must be explicit in both the synchronization logic and the operator UI. |
-| FR-10 | Transactions shall follow the lifecycle: Pending → Confirmed → Voided. |
-| FR-11 | Once confirmed by the backend, a transaction cannot be modified by operators. |
-| FR-12 | Corrections to backend-confirmed transactions are restricted to administrators, as an exception workflow. |
-| FR-13 | Inventory shall be deducted only after a transaction is confirmed (eventual consistency; real-time stock reservation is out of scope). |
-| FR-14 | Multiple operators may process transactions simultaneously for the same merchant, including while working independently on different devices without network connectivity. |
-| FR-15 | Cash payments must be confirmed directly by the operator without relying on external systems, and must remain fully operable offline. |
-| FR-16 | Static QRIS payments must use a pre-generated QR code that can be displayed without an internet connection, and must remain fully operable offline. |
-| FR-17 | Bank Transfer payments must be verified manually by the operator using external confirmation (e.g., banking app, e-wallet notification, or SMS), not by the POS system. |
-| FR-18 | The system must provide a reconciliation process for operator-confirmed payments (Static QRIS and Transfer) when payment confirmation is later found to be incorrect. |
-| FR-19 | The system must handle failures related to concurrent synchronization, interrupted connectivity, and mass reconnection after prolonged outages. |
-| FR-20 | The system must support growth from an early pilot to 500+ merchants without requiring manual reconciliation as part of normal operations. |
-| FR-21 | The Operator (checkout) application must continue operating under an offline-first onboarding model for six months, with no self-serve fallback (ADR-006). |
-
----
-
-## 8. Non-Functional Requirements (NFR)
-
-*(The Final Project brief specifies these NFR categories, with the brief's own generic examples, as a required deliverable section — teams are expected to fill in concrete targets themselves. No case-specific numeric targets are stated in the source documents.)*
-
-| Category | Example Given in the Brief |
-|---|---|
-| **Performance targets** | e.g., "transaction submission < 500 ms" |
-| **Availability goals** | e.g., "99.9% uptime" |
-| **Scalability considerations** | e.g., "support 10× more users" |
-| **Security measures** | e.g., password hashing, RBAC |
-| **Maintainability principles** | e.g., modular architecture, logging |
-
----
-
-## 9. Deliverables — Case Study (Case Study §6)
-
-Participants should design and justify:
-1. An offline data persistence strategy that ensures transactions survive app restarts and device reboots.
-2. A synchronization protocol that reliably reconciles offline transactions while preventing duplicates.
-3. A concurrency strategy for multiple offline operators working under the same merchant.
-4. A transaction lifecycle showing how offline-created transactions transition from provisional to backend-confirmed states.
-5. A payment handling strategy for Cash, Static QRIS, and Transfer, including differences in their confirmation process.
-6. A reconciliation process for operator-confirmed payments (Static QRIS and Transfer) when payment confirmation is later found to be incorrect.
-7. Failure handling for concurrent synchronization, interrupted connectivity, and mass reconnection after prolonged outages.
-8. A justification of the chosen consistency model and its trade-offs.
-
----
-
-## 10. Deliverables — Final Project Brief (developed in parallel with the code)
-
-1. **Functional Requirements Document (FRD)**
-   a. User stories & use cases for each feature
-   b. Role-based access definitions (Admin vs. Kasir flows)
-   c. Workflow descriptions (e.g., "what happens when a sale is processed")
-2. **Non-Functional Requirements (NFR)**
-   a. Performance targets (e.g., "transaction submission < 500 ms")
-   b. Availability goals (e.g., "99.9% uptime")
-   c. Scalability considerations (e.g., "support 10× more users")
-   d. Security measures (e.g., password hashing, RBAC)
-   e. Maintainability principles (e.g., modular architecture, logging)
-3. **Out-of-Scope**
-   a. Explicitly state what you will not build in this iteration.
-   e.g., "No mobile app or automated supplier restocking in this release."
-4. **Low-Level System Architecture (LLA)**
-   a. Diagram showing frontend, backend, database, APIs
-   b. Rationale for your technology choices (e.g., Express + PostgreSQL; REST vs. GraphQL)
-   c. Breakdown of modules/services and how they interact
-5. **Database Design (ERD)**
-   a. Entity-Relationship Diagram
-   b. Table descriptions & purposes
-   c. Key indexes or constraints (e.g., unique email, foreign keys)
-   d. Notes on normalization (if applied)
-6. **Testing Strategy & Coverage Plan**
-   a. Unit tests for core functions/services
-   b. Integration tests for API endpoints and data flows
-   c. (Optional) Manual test cases or acceptance criteria
-7. **DevOps & Deployment Plan**
-   a. Environment setup (Docker, Vercel, Railway, Supabase, etc.)
-   b. .env template and configuration guidelines
-   c. CI/CD pipeline overview (e.g., GitHub Actions config)
-8. **Final Presentation**
-   a. Slide deck outlining problem, architecture, and process
-   b. Live demo of your deployed prototype
-   c. Reflections on challenges, teamwork, and lessons learned
-
----
-
-## 11. Out-of-Scope
-
-The Final Project brief requires an **Out-of-Scope** section as part of the deliverables (§10, item 3 above): teams must explicitly state what they will not build in this iteration. The brief gives a generic example format only: *"No mobile app or automated supplier restocking in this release"* — this is an illustrative example in the brief, not an item specified for this particular case.
-
-The case study itself explicitly states **one** concrete exclusion for this case:
-- **Real-time stock reservation is out of scope** (inventory is deducted only after transaction confirmation; see Section 5, System Constraints).
-
-No other specific out-of-scope items are stated in the source documents for this case; the remainder of the Out-of-Scope section is left for the team to define, per the brief's instruction.
-
----
-
-## 12. Scoring Criteria (Final Project brief)
-
-| Criteria | Points |
-|---|---|
-| Diagrams (use case diagram, entity relationship diagram, system design diagram) | 10% |
-| Architectural Justification & Trade-offs | 25% |
-| Clean Code Implementation | 10% |
-| Security Implementation | 10% |
-| CI/CD Implementation | 5% |
-| Test Coverage & Deployment | 5% |
-| Application UI/UX & Functionality | 25% |
-| Presentation & Prototype Demonstration | 10% |
-| Usability/Usefulness | 10% |
-| **Total** | **110%** |
-
----
-
-## 13. Definition of Success (Case Study §7)
-
-A successful solution enables Application K to support reliable checkout operations despite prolonged connectivity disruptions. Operators should be able to continue processing sales offline without losing or duplicating transactions, while all provisional transactions are reconciled correctly once connectivity returns. The system should provide clear visibility into transaction status, maintain accurate sales records across multiple operators and devices, and support Application K's growth from its initial pilot to 500+ merchants without requiring manual reconciliation as part of normal operations.
-
----
-
-## 14. Author Notes (Final Project brief)
-
-The brief notes that the team will not only write code, but will also operate like a real tech company — planning, documenting, and communicating every step of the process. The FRD, NFR, Out-of-Scope, LLA, ERD, Testing Strategy, and DevOps Plan are described as a "living project playbook" to be filled in progressively and used to tell the team's story in the final presentation, rather than homework completed before coding begins.
-
----
-
-## 15. Deadlines
-
-| Deliverable | Deadline |
-|---|---|
-| GitHub Repository | 23:59 WIB, 21 August 2025 |
-| Presentation File | 06:00 WIB, 22 August 2025 |
+Lanjutkan ke [FRD](FRD.md), [NFR](NFR.md), [architecture](architecture.md), dan [API contract](api_contract.md).

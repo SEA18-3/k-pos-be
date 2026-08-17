@@ -1,110 +1,130 @@
-# K-POS Backend Architecture & Design Justifications
+# K-POS System Architecture
 
-Dokumen ini menjelaskan arsitektur backend K-POS untuk menangani skenario **Offline-First Transaction Consistency** dan **Strict Immutability**.
+## Context
 
-## 1. Arsitektur Keseluruhan (High-Level)
-
-Sistem K-POS dibangun menggunakan framework **NestJS** dengan pendekatan *Modular Architecture*. Backend ini menyediakan layanan berbasis **REST API** yang diakses oleh dua jenis *client*:
-1. **Aplikasi Tablet Kasir (Frontend)**: Beroperasi secara *offline-first*.
-2. **Dashboard Web K-POS**: Digunakan oleh Owner/Admin untuk manajemen *inventory* dan rekonsiliasi keuangan.
-
-### Tech Stack Utama
-- **Framework:** NestJS (Node.js/TypeScript)
-- **Database:** PostgreSQL
-- **ORM:** Prisma
-- **Message Broker:** RabbitMQ (CloudAMQP)
-- **Authentication:** JWT (JSON Web Tokens) dengan skema *Access Token* & *Refresh Token*.
-- **Storage:** Supabase Storage (untuk gambar produk).
-
----
-
-## 2. Standard REST API Flow (Online Operations)
-
-Untuk fitur-fitur standar seperti manajemen produk, autentikasi, dan *dashboard reporting*, K-POS menggunakan arsitektur REST API sinkronus (*Request-Response* klasik).
+K-POS memakai modular monolith agar transactional boundary tetap sederhana. Tiga PWA dipisah karena access pattern berbeda, bukan karena setiap UI membutuhkan backend sendiri.
 
 ```mermaid
 flowchart LR
-    Client[Client] -->|HTTP Request| Guard[Auth/Role Guard]
-    Guard -->|Valid| Controller[Controller]
-    Controller -->|DTO Validation| Service[Service]
-    Service -->|Business Logic| Prisma[Prisma ORM]
-    Prisma -->|Query| DB[(PostgreSQL)]
-    DB --> Prisma
-    Prisma --> Service
-    Service --> Controller
-    Controller -->|HTTP Response| Client
+    OP["Operator PWA /\nIndexedDB + outbox"]
+    EN["Entry PWA /entry/"]
+    OW["Owner PWA /owner/"]
+    RP["Same-origin reverse proxy"]
+    API["NestJS API\n/api/v1"]
+    RC["Rabbit consumers\nsame process"]
+    PG[(PostgreSQL\nledger + receipts + read models)]
+    MQ[(RabbitMQ\ndurable queues)]
+
+    OP --> RP
+    EN --> RP
+    OW --> RP
+    RP --> API
+    API --> PG
+    API -->|publisher confirm| MQ
+    MQ --> RC
+    RC --> PG
 ```
 
-### Keamanan (Authentication & Authorization)
-- **JWT Strategy:** Setiap *request* yang dilindungi wajib menyertakan `Authorization: Bearer <token>`.
-- **Role-Based Access Control (RBAC):** Diatur menggunakan *decorator* `@Roles(Role.OWNER, Role.ADMIN)`. Kasir (Operator) tidak dapat mengakses rute manajemen produk maupun rekonsiliasi.
+Local ports: Operator `5173`, Entry `5174`, Owner `5175`, API `3001`, PostgreSQL `5432`, RabbitMQ `5672`, management UI `15672`.
 
----
+## Backend modules
 
-## 3. Offline-First Pipeline (Asynchronous Transactions)
+| Module               | Ownership                                                                    |
+| -------------------- | ---------------------------------------------------------------------------- |
+| Auth/Sessions        | credentials, access token, rotating refresh, offline lease, revocation       |
+| Merchants/Users      | onboarding, exactly-one Owner, Entry/Operator management                     |
+| Devices              | shared counter pairing, binding, revoke, last Operator lease                 |
+| Products/Inventory   | catalog snapshots, archive, adjustment, stock movements                      |
+| Sync/Receipts        | validation, payload hash, durable receipts, publish dispatcher, status query |
+| Transactions         | immutable ledger, item/payment snapshot, effective status                    |
+| Reconciliation       | conflict resolution, payment exception, correction, retry approval           |
+| Reporting            | read-model query; write projection dijalankan worker lane                    |
+| Audit/Health/Metrics | forensic trail, dependency state, operational telemetry                      |
 
-Untuk mengakomodasi Kasir yang tetap berjualan tanpa internet, sinkronisasi transaksi tidak menggunakan HTTP *Request-Response* biasa, melainkan menggunakan arsitektur **Event-Driven / Message Queue** untuk mencegah kelebihan beban server (*Thundering Herd Problem*).
+## Durable sync path
 
 ```mermaid
-flowchart TD
-    subgraph Frontend / Tablet Kasir
-        K[Kasir Input Transaksi] --> LDB[(Local DB / IndexedDB)]
-        LDB -->|Internet Pulih| API_REQ(POST /sync)
-    end
+sequenceDiagram
+    participant PWA as Operator PWA
+    participant API as Nest API
+    participant DB as PostgreSQL
+    participant MQ as RabbitMQ
+    participant W as Consumer
 
-    subgraph Backend / NestJS
-        API_REQ --> HTTP_CTR[SyncController]
-        HTTP_CTR -->|Publish| PRODUCER[SyncProducerService]
-        PRODUCER -.-> HTTP_RES(HTTP 200 OK - Fire & Forget)
-        
-        subgraph RabbitMQ
-            EXCHANGE((sync_exchange))
-            QUEUE[(sync.transactions)]
-            DLQ[(sync.dlq)]
-            
-            PRODUCER == 1. Publish ==> EXCHANGE
-            EXCHANGE == 2. Route ==> QUEUE
-        end
-        
-        QUEUE == 3. Consume ==> CONSUMER[SyncConsumerService]
-        CONSUMER == 4a. Success / Conflict ==> DB[(PostgreSQL)]
-        CONSUMER == 4b. Format Cacat ==> DLQ
-        
-        DLQ == 5. DLQ Worker ==> DB_SYNC[(Tabel SyncQueue)]
+    PWA->>PWA: Atomic transaction + outbox
+    PWA->>API: POST /api/v1/sync + X-Device-ID
+    API->>API: Validate whole batch + canonical hash
+    API->>DB: Create/reuse receipts atomically
+    API->>MQ: Persistent publish with confirm
+    alt confirmed publish
+        API-->>PWA: 200 accepted + queued_at
+    else broker unavailable
+        API-->>PWA: 503 retryable; receipts retained
+        API->>MQ: Dispatcher retries unpublished receipts
     end
+    MQ->>W: Deliver message
+    W->>DB: Idempotent ledger transaction
+    DB-->>W: Commit
+    W-->>MQ: ACK
+    PWA->>API: GET /sync/receipts?offline_uuid=...
+    API-->>PWA: QUEUED/PROCESSING/SYNCED/CONFLICT/FAILED
 ```
 
-### Justifikasi Penggunaan RabbitMQ vs Sinkronisasi Langsung
-- **Problem:** Jika 300 *device* *online* bersamaan dan menembakkan 4.500 transaksi langsung ke PostgreSQL (Sync Sinkronus), koneksi *database pool* akan habis (*Connection Timeout*) dan transaksi gagal.
-- **Solution & Justification:** RabbitMQ bertindak sebagai "Penyangga" (*Buffer*). `POST /sync` hanya menaruh data ke memori RabbitMQ lalu langsung mengembalikan `200 OK`. *Worker* PostgreSQL akan menarik dan memproses pesan tersebut satu per satu dengan kecepatan stabil tanpa pernah membebani *database* (Resilience tinggi).
+API tidak melakukan distributed transaction antara PostgreSQL dan RabbitMQ. Durable receipt + publish state bertindak sebagai transactional outbox. Crash setelah DB commit tetapi sebelum publish-confirm bookkeeping aman karena dispatcher dapat publish ulang dan consumer idempotent.
 
----
+## Idempotency dan concurrency
 
-## 4. Integritas Data & Concurrency Control
+- Key: unique `(device_id, offline_uuid)`.
+- Identity: UUID v4/v7 accepted; frontend harus mempertahankan UUID yang sama pada retry.
+- Integrity: canonical payload hash dihitung dari normalized immutable sale payload.
+- Identical replay mengembalikan existing receipt/status.
+- Different payload pada key sama menolak seluruh request `409`.
+- Product ownership dan device-to-merchant binding diverifikasi sebelum enqueue.
+- Stock write menggunakan database transaction/row lock dan idempotent movement key.
 
-### A. Idempotensi Berbasis UUID Lokal
-- **Kasus:** Kasir mengirim transaksi yang sama dua kali karena jaringan tidak stabil (*Retry*).
-- **Solusi:** Transaksi dari FE membawa `offline_uuid`. Backend menjadikan `id_device` + `offline_uuid` sebagai *Unique Constraint*. Jika terdeteksi duplikat, *Worker* akan menolak memproses ulang dan langsung me-*acknowledge* pesan tersebut.
+## Worker lanes
 
-### B. Pessimistic Locking (Menghindari Race Condition)
-- **Kasus:** Dua kasir menjual barang yang sama persis saat stok tersisa 1, lalu keduanya melakukan *sync* di waktu bersamaan.
-- **Solusi:** Di dalam `SyncConsumerService`, validasi dan pemotongan stok dilakukan di dalam transaksi database (`$transaction`) dengan *Pessimistic Locking* menggunakan SQL Raw: `SELECT ... FOR UPDATE`. Ini mengunci baris stok tersebut di PostgreSQL hingga struk pertama selesai diproses.
+Satu process boleh menjalankan beberapa consumer loop independen:
 
----
+1. Sync settlement: receipt → immutable ledger/payment.
+2. Inventory: confirmed sale/correction → stock movement/discrepancy.
+3. Reporting: confirmed effective effect → daily/product projections.
+4. DLQ: terminal broker failure → `FAILED` receipt.
 
-## 5. Rekonsiliasi & Exception Workflow (Strict Immutability)
+Lane dipisahkan queue, consumer concurrency, dan metric agar reporting backlog tidak memblokir settlement. PostgreSQL outbox fan-out memungkinkan inventory/reporting replay tanpa menulis ulang transaction.
 
-Dalam sistem finansial, data yang sudah terekam sah tidak boleh dihapus begitu saja.
+## Consistency boundary
 
-### A. Penanganan Konflik Stok (SYNC_CONFLICT)
-Jika stok habis saat Sinkronisasi:
-- Transaksi **tetap masuk** ke tabel `Transaction` dengan status `SYNC_CONFLICT`. (Karena secara fisik, kasir sudah menerima uang dari pelanggan).
-- Owner harus membuka halaman Rekonsiliasi dan secara manual menekan tombol **Confirm** atau **Void**.
+| Data                     | Model                                   |
+| ------------------------ | --------------------------------------- |
+| Local checkout/outbox    | Strong atomicity di IndexedDB           |
+| Backend receipt creation | Strong atomicity di PostgreSQL          |
+| Rabbit delivery          | At-least-once                           |
+| Ledger effect            | Exactly-once melalui idempotency        |
+| Inventory                | Eventual, idempotent                    |
+| Reporting                | Eventual, idempotent, freshness visible |
 
-### B. Strict Immutability (Append-Only Corrections)
-Jika transaksi yang sudah berstatus `CONFIRMED` terbukti salah (kasir salah input / pelanggan melakukan retur):
-1. Sistem **tidak akan** melakukan `UPDATE` atau `DELETE` pada baris transaksi asli. Statusnya akan tetap `CONFIRMED` selamanya sebagai bukti historis.
-2. Sistem menjalankan *Exception Workflow* (*Append-Only*):
-   - Jika **Void Total** (misal penipuan): Backend membuat 1 baris di tabel `TransactionCorrection` untuk mencatat pembatalannya.
-   - Jika **Revisi** (misal salah jumlah barang): Backend membuat 1 Transaksi Baru yang benar, lalu menyambungkannya ke transaksi lama lewat tabel `TransactionCorrection` (*Immutable Bridge*).
-3. Di sisi Frontend / Dashboard, transaksi asli akan disembunyikan dari perhitungan pendapatan karena ID-nya sudah tercatat sebagai transaksi "Dibatalkan/Dikoreksi" di tabel `TransactionCorrection`. Jejak audit 100% sempurna tanpa ada *log* yang menguap.
+## Hosted routing dan service worker
+
+- `/api/v1`, `/health`, `/metrics` → NestJS.
+- `/entry/` → Entry static PWA.
+- `/owner/` → Owner static PWA.
+- `/` → Operator static PWA.
+
+Operator service worker mengecualikan `/entry/`, `/owner/`, `/api/`, `/health`, dan `/metrics`. Entry dan Owner memakai base path serta service-worker scope masing-masing. Unknown API route tidak boleh menerima SPA HTML.
+
+## Failure behavior
+
+| Failure                                | Behavior                                                  |
+| -------------------------------------- | --------------------------------------------------------- |
+| Browser/network down                   | Checkout lokal lanjut selama lease valid; outbox retained |
+| Lost HTTP response                     | Retry same ID/payload; existing receipt reused            |
+| Rabbit unavailable                     | API degraded; sync `503`; REST sehat tetap melayani       |
+| Consumer crash before commit           | Message redelivered, belum ada effect                     |
+| Consumer crash after commit before ACK | Redelivery becomes idempotent no-op                       |
+| Transient DB/provider error            | TTL retries 5/30/120 detik                                |
+| Permanent error                        | DLQ and terminal `FAILED`                                 |
+| Stock shortage                         | Terminal `CONFLICT`; Owner confirm/void                   |
+| Reporting backlog                      | Sale tetap settled; dashboard menunjukkan lag             |
+
+Keputusan utama dijelaskan di [ADR index](adr/README.md), schema di [database design](database_design.md), dan operasi di [deployment runbook](deployment_runbook.md).
