@@ -52,8 +52,11 @@ jobs:
       - name: Run Linter (ESLint)
         run: npm run lint
 
-      - name: Run Unit Tests
-        run: npm run test
+      - name: Check Types (TypeScript)
+        run: npm run typecheck
+
+      - name: Run Unit Tests with Coverage
+        run: npm run test:cov
 
       - name: Run e2e Tests
         env:
@@ -67,3 +70,10 @@ jobs:
       - name: Build Application
         run: npm run build
 
+  semgrep:
+    name: SAST Scan (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        run: docker run --rm -v "${PWD}:/src" returntocorp/semgrep semgrep scan --config auto --error
