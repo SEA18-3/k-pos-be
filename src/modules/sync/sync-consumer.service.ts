@@ -119,6 +119,7 @@ export class SyncConsumerService {
           });
 
           // 3. Create Payment
+          // Sesuai ADR-001: Semua metode pembayaran langsung VERIFIED (Trust-first).
           await tx.payment.create({
             data: {
               id_transaction: newTx.id_transaction,
@@ -129,7 +130,8 @@ export class SyncConsumerService {
               change_amount: data.payment.change_amount,
               qris_code: data.payment.qris_code,
               transfer_ref: data.payment.transfer_ref,
-              status: PaymentStatus.PENDING,
+              status: PaymentStatus.VERIFIED, // <-- Semua langsung VERIFIED
+              verified_at: new Date(),
             },
           });
 
@@ -172,7 +174,7 @@ export class SyncConsumerService {
               operation: 'SYNC_BATCH_REJECTED',
               payload: JSON.stringify(data),
               last_error: error.message,
-              status: 'SYNC_FAILED',
+              status: SyncStatus.SYNC_FAILED,
             },
           });
           this.logger.warn(`Transaction ${data.offline_uuid} has been sent to SyncQueue (DLQ).`);
