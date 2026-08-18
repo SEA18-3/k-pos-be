@@ -1,6 +1,6 @@
 import { Controller, Logger } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
-import { SyncTransactionDto } from './dto/sync-batch.dto';
+import { SyncItemDto, SyncTransactionDto } from './dto/sync-batch.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SyncStatus, TransactionStatus, PaymentStatus } from '../../../generated/prisma/client';
 
@@ -22,7 +22,7 @@ export class SyncConsumerService {
 
   @EventPattern('sync_transaction_batch')
   async handleSyncTransactionBatch(
-    @Payload() transactions: SyncTransactionDto[],
+    @Payload() transactions: (SyncTransactionDto & { id_device: string })[],
     @Ctx() context: RmqContext,
   ) {
     const channel = context.getChannelRef() as RmqChannel;
@@ -53,6 +53,25 @@ export class SyncConsumerService {
         await this.prisma.$transaction(async (tx) => {
           // We will do optimistic concurrency / row lock manually for products
           let hasConflict = false;
+
+          // Arithmetic validation
+          let calculatedSubtotal = 0;
+          for (const item of data.items) {
+            if (Number(item.quantity) * Number(item.unit_price) !== Number(item.subtotal)) {
+              throw new Error(
+                `Arithmetic validation failed for item ${item.id_product}: ${item.quantity} * ${item.unit_price} != ${item.subtotal}`,
+              );
+            }
+            calculatedSubtotal += Number(item.subtotal);
+          }
+          if (
+            calculatedSubtotal !== Number(data.subtotal) ||
+            calculatedSubtotal !== Number(data.total)
+          ) {
+            throw new Error(
+              `Arithmetic validation failed for transaction total: ${calculatedSubtotal} != ${data.subtotal}`,
+            );
+          }
 
           // Verify products and quantities
           for (const item of data.items) {
@@ -96,6 +115,7 @@ export class SyncConsumerService {
               id_user: device.id_user,
               id_device: data.id_device,
               offline_uuid: data.offline_uuid,
+              payload_hash: (data as Partial<{ payload_hash: string }>).payload_hash || null,
               subtotal: data.subtotal,
               total: data.total,
               created_at_local: new Date(data.created_at_local),
@@ -109,12 +129,17 @@ export class SyncConsumerService {
 
           // 2. Create Details
           await tx.detailTransaction.createMany({
-            data: data.items.map((item) => ({
+            data: data.items.map((item: SyncItemDto) => ({
               id_transaction: newTx.id_transaction,
               id_product: item.id_product,
               quantity: item.quantity,
               unit_price: item.unit_price,
               subtotal: item.subtotal,
+              product_name: (item as Partial<{ product_name: string }>).product_name || 'Unknown',
+              sku_snapshot: (item as Partial<{ sku_snapshot: string }>).sku_snapshot || 'NONE',
+              catalog_version: (item as Partial<{ catalog_version: Date | string }>).catalog_version
+                ? new Date((item as Partial<{ catalog_version: Date | string }>).catalog_version!)
+                : new Date(),
             })),
           });
 

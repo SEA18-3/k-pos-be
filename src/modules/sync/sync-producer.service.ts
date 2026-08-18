@@ -49,7 +49,7 @@ export class SyncProducerService implements OnModuleInit {
     this.logger.log('RabbitMQ Topology (DLX/DLQ) successfully asserted.');
   }
 
-  async publishBatch(transactions: SyncTransactionDto[]) {
+  async publishBatch(transactions: (SyncTransactionDto & { id_device: string })[]) {
     try {
       // Mengirim seluruh array transaksi sebagai satu pesan batch ke RabbitMQ
       // Hal ini mengurangi network serialization overhead NestJS yang secara drastis menurunkan waktu respons.

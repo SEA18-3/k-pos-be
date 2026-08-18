@@ -72,6 +72,24 @@ export class SyncItemDto {
   @IsNumber()
   @Min(0)
   subtotal: number;
+
+  @ApiProperty({ example: 'Kopi Susu', description: 'Product name snapshot at time of sale' })
+  @IsString()
+  @IsNotEmpty()
+  product_name: string;
+
+  @ApiProperty({ example: 'KS-001', description: 'SKU snapshot at time of sale' })
+  @IsString()
+  @IsNotEmpty()
+  sku_snapshot: string;
+
+  @ApiProperty({
+    example: '2026-08-18T00:00:00.000Z',
+    description: 'Catalog version at time of sale',
+  })
+  @IsString()
+  @IsNotEmpty()
+  catalog_version: string;
 }
 
 export class SyncTransactionDto {
@@ -82,11 +100,6 @@ export class SyncTransactionDto {
   @IsUUID(4)
   @IsNotEmpty()
   offline_uuid: string;
-
-  @ApiProperty({ example: 'DEV-1', description: 'ID of the device submitting the transaction' })
-  @IsString()
-  @IsNotEmpty()
-  id_device: string;
 
   @ApiProperty({
     example: '2026-08-16T10:00:00.000Z',
