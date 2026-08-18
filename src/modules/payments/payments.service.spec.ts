@@ -91,46 +91,4 @@ describe('PaymentsService', () => {
     });
   });
 
-  describe('reconcile', () => {
-    it('should create reconciliation case', async () => {
-      (prisma.payment.findUnique as jest.Mock).mockResolvedValue(mockPayment);
-      (prisma.reconciliation.findFirst as jest.Mock).mockResolvedValue(null);
-      (prisma.reconciliation.create as jest.Mock).mockResolvedValue({
-        id_reconciliation: 'rec-1',
-        id_payment: 'pay-1',
-        status: 'OPEN',
-      });
-
-      const result = await service.reconcile(mockUser, 'pay-1', {
-        id_transaction: 'trx-1',
-        reason: 'Payment mismatch',
-        evidence: 'evidence.png',
-      });
-
-      expect(result.id_reconciliation).toBe('rec-1');
-    });
-
-    it('should throw NotFoundException for unknown payment', async () => {
-      (prisma.payment.findUnique as jest.Mock).mockResolvedValue(null);
-      await expect(
-        service.reconcile(mockUser, 'bad-id', {
-          id_transaction: 'trx-1',
-          reason: 'test',
-        }),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw BadRequestException if already has open case', async () => {
-      (prisma.payment.findUnique as jest.Mock).mockResolvedValue(mockPayment);
-      (prisma.reconciliation.findFirst as jest.Mock).mockResolvedValue({
-        id_reconciliation: 'existing',
-      });
-      await expect(
-        service.reconcile(mockUser, 'pay-1', {
-          id_transaction: 'trx-1',
-          reason: 'test',
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-  });
 });

@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { JwtPayload } from '../../common/decorators/current-user.decorator';
-import { CreateReconciliationDto } from '../reconciliations/dto/create-reconciliation.dto';
 
 export type PaymentStatusFilter = 'VERIFIED' | 'FAILED';
 
@@ -72,43 +71,5 @@ export class PaymentsService {
     }
 
     return payment;
-  }
-
-  /**
-   * POST /payments/:id/reconcile — Open a reconciliation case for a payment.
-   * Delegates to the Reconciliations logic (same as POST /reconciliations but via payment ID).
-   */
-  async reconcile(user: JwtPayload, paymentId: string, dto: CreateReconciliationDto) {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id_payment: paymentId },
-    });
-
-    if (!payment) {
-      throw new NotFoundException('Payment not found');
-    }
-
-    if (payment.id_merchant !== user.id_merchant) {
-      throw new ForbiddenException('Access denied');
-    }
-
-    const existing = await this.prisma.reconciliation.findFirst({
-      where: { id_payment: paymentId, status: 'OPEN' },
-    });
-
-    if (existing) {
-      throw new BadRequestException('Payment already has an open reconciliation case');
-    }
-
-    return this.prisma.reconciliation.create({
-      data: {
-        id_payment: paymentId,
-        opened_by: user.sub,
-        reason: dto.reason,
-        evidence_note: dto.evidence,
-      },
-      include: {
-        payment: { select: { id_payment: true, amount: true, method: true, status: true } },
-      },
-    });
   }
 }

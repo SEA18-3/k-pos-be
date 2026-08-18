@@ -62,19 +62,4 @@ describe('PaymentsController', () => {
     });
   });
 
-  describe('reconcile', () => {
-    it('should call service.reconcile and return case', async () => {
-      const mockCase = { id_reconciliation: 'rec-1', status: 'OPEN' };
-      (service.reconcile as jest.Mock).mockResolvedValue(mockCase);
-      const result = await controller.reconcile(mockUser, 'pay-1', {
-        id_transaction: 'trx-1',
-        reason: 'mismatch',
-      });
-      expect(service.reconcile).toHaveBeenCalledWith(mockUser, 'pay-1', {
-        id_transaction: 'trx-1',
-        reason: 'mismatch',
-      });
-      expect(result).toEqual(mockCase);
-    });
-  });
 });

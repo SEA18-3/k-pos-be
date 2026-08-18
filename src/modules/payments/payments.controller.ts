@@ -24,7 +24,6 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../../common/decorators/current-user.decorator';
-import { CreateReconciliationDto } from '../reconciliations/dto/create-reconciliation.dto';
 
 @ApiTags('Payments')
 @Controller('payments')
@@ -61,26 +60,5 @@ export class PaymentsController {
   @ApiResponse({ status: 404, description: 'Pembayaran tidak ditemukan' })
   async findOne(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.paymentsService.findOne(user, id);
-  }
-
-  @Post(':id/reconcile')
-  @Roles('OWNER')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({
-    summary: 'Buka kasus rekonsiliasi untuk pembayaran',
-    description:
-      'Membuka kasus rekonsiliasi baru dengan status OPEN untuk pembayaran yang diberikan. ' +
-      'Gunakan POST /reconciliations/:id/resolve untuk menyelesaikannya.',
-  })
-  @ApiParam({ name: 'id', description: 'ID Pembayaran yang akan direkonsiliasi' })
-  @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil dibuat' })
-  @ApiResponse({ status: 400, description: 'Sudah memiliki kasus rekonsiliasi yang terbuka' })
-  @ApiResponse({ status: 404, description: 'Pembayaran tidak ditemukan' })
-  async reconcile(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-    @Body() dto: CreateReconciliationDto,
-  ) {
-    return this.paymentsService.reconcile(user, id, dto);
   }
 }
