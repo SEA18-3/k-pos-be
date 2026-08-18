@@ -42,7 +42,7 @@ export class SupabaseStorageService {
         persistSession: false,
       },
       realtime: {
-        // @ts-ignore
+        // @ts-expect-error: Suppress type mismatch from older Supabase bindings
         transport: WebSocket,
       },
     });
