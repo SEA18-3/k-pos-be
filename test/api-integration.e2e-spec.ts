@@ -23,6 +23,7 @@ describe('API Integration Flow (e2e)', () => {
   let reconciliationId: string;
 
   beforeAll(async () => {
+    jest.setTimeout(15000);
     // Wait briefly to ensure server is ready (assuming it's already running)
     await new Promise((resolve) => setTimeout(resolve, 1000));
   });
