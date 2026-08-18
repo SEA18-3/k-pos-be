@@ -19,22 +19,22 @@ export class ReconciliationsController {
 
   @Post()
   @Roles(Role.OWNER, Role.OPERATOR)
-  @ApiOperation({ summary: 'Report a transaction issue (creates a reconciliation record)' })
-  @ApiResponse({ status: 201, description: 'Reconciliation record created.' })
+  @ApiOperation({ summary: 'Laporkan masalah transaksi (membuat rekonsiliasi baru)' })
+  @ApiResponse({ status: 201, description: 'Record rekonsiliasi berhasil dibuat.' })
   create(@CurrentUser() user: JwtPayload, @Body() createDto: CreateReconciliationDto) {
     return this.reconciliationsService.create(user, createDto);
   }
 
   @Get()
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Get all reconciliation records for the merchant' })
+  @ApiOperation({ summary: 'Ambil semua record rekonsiliasi milik merchant' })
   findAll(@CurrentUser() user: JwtPayload) {
     return this.reconciliationsService.findAll(user);
   }
 
   @Post(':id/resolve')
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Resolve a reconciliation record (VALID/INVALID)' })
+  @ApiOperation({ summary: 'Selesaikan status kasus rekonsiliasi (VALID/INVALID)' })
   resolve(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,

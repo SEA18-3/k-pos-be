@@ -21,27 +21,27 @@ export class TransactionsController {
 
   @Get()
   @Roles(Role.OWNER, Role.OPERATOR)
-  @ApiOperation({ summary: 'Get all transactions with filters and pagination' })
-  @ApiResponse({ status: 200, description: 'Return list of transactions.' })
+  @ApiOperation({ summary: 'Dapatkan semua transaksi dengan filter dan paginasi' })
+  @ApiResponse({ status: 200, description: 'Mengembalikan daftar transaksi.' })
   findAll(@CurrentUser() user: JwtPayload, @Query() query: QueryTransactionsDto) {
     return this.transactionsService.findAll(user, query);
   }
 
   @Get(':id')
   @Roles(Role.OWNER, Role.OPERATOR)
-  @ApiOperation({ summary: 'Get a transaction by id' })
-  @ApiResponse({ status: 200, description: 'Return the transaction.' })
-  @ApiResponse({ status: 404, description: 'Transaction not found.' })
+  @ApiOperation({ summary: 'Dapatkan transaksi berdasarkan ID' })
+  @ApiResponse({ status: 200, description: 'Mengembalikan data transaksi.' })
+  @ApiResponse({ status: 404, description: 'Transaksi tidak ditemukan.' })
   findOne(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.transactionsService.findOne(user, id);
   }
 
   @Patch(':id/void')
   @Roles(Role.OWNER, Role.OPERATOR)
-  @ApiOperation({ summary: 'Void a PENDING transaction' })
-  @ApiResponse({ status: 200, description: 'Transaction successfully voided.' })
-  @ApiResponse({ status: 400, description: 'Invalid transaction status.' })
-  @ApiResponse({ status: 404, description: 'Transaction not found.' })
+  @ApiOperation({ summary: 'Void / batalkan transaksi PENDING' })
+  @ApiResponse({ status: 200, description: 'Transaksi berhasil dibatalkan (void).' })
+  @ApiResponse({ status: 400, description: 'Status transaksi tidak valid.' })
+  @ApiResponse({ status: 404, description: 'Transaksi tidak ditemukan.' })
   voidTransaction(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -53,13 +53,13 @@ export class TransactionsController {
   @Post(':id/resolve')
   @Roles(Role.OWNER)
   @ApiOperation({
-    summary: 'Resolve a SYNC_CONFLICT transaction manually (OWNER only)',
+    summary: 'Selesaikan transaksi SYNC_CONFLICT secara manual (Khusus OWNER)',
     description:
       'Gunakan action CONFIRM untuk memaksa konfirmasi transaksi (stok dipotong meski negatif). Gunakan VOID untuk membatalkan transaksi konflik.',
   })
-  @ApiResponse({ status: 200, description: 'Conflict resolved successfully.' })
-  @ApiResponse({ status: 400, description: 'Transaction is not in SYNC_CONFLICT state.' })
-  @ApiResponse({ status: 404, description: 'Transaction not found.' })
+  @ApiResponse({ status: 200, description: 'Konflik berhasil diselesaikan.' })
+  @ApiResponse({ status: 400, description: 'Transaksi tidak dalam status SYNC_CONFLICT.' })
+  @ApiResponse({ status: 404, description: 'Transaksi tidak ditemukan.' })
   resolveConflict(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -71,16 +71,16 @@ export class TransactionsController {
   @Post(':id/correct')
   @Roles(Role.OWNER)
   @ApiOperation({
-    summary: 'Correct a CONFIRMED transaction using Immutable Bridge pattern (OWNER only)',
+    summary: 'Koreksi transaksi CONFIRMED menggunakan pola Immutable Bridge (Khusus OWNER)',
     description:
       'Buat versi baru dari transaksi yang sudah CONFIRMED. Transaksi lama akan di-VOID (tidak dihapus). Stok lama direverted, stok baru dipotong. Catatan koreksi disimpan di TransactionCorrection.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Transaction corrected. Returns TransactionCorrection record.',
+    description: 'Transaksi berhasil dikoreksi. Mengembalikan data record TransactionCorrection.',
   })
-  @ApiResponse({ status: 400, description: 'Only CONFIRMED transactions can be corrected.' })
-  @ApiResponse({ status: 404, description: 'Transaction not found.' })
+  @ApiResponse({ status: 400, description: 'Hanya transaksi berstatus CONFIRMED yang dapat dikoreksi.' })
+  @ApiResponse({ status: 404, description: 'Transaksi tidak ditemukan.' })
   correctTransaction(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
