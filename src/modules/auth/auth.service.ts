@@ -87,7 +87,7 @@ export class AuthService {
       id_merchant: user.id_merchant,
     };
     const access_token = this.jwtService.sign(payload, {
-      expiresIn: (process.env.JWT_EXPIRATION_TIME || '1d') as StringValue,
+      expiresIn: '15m' as StringValue,
     });
 
     const refresh_token = crypto.randomBytes(40).toString('hex');
@@ -138,10 +138,27 @@ export class AuthService {
     };
 
     const access_token = this.jwtService.sign(payload, {
-      expiresIn: (process.env.JWT_EXPIRATION_TIME || '1d') as StringValue,
+      expiresIn: '15m' as StringValue,
     });
 
-    return { access_token };
+    // Rotating refresh token: delete old one and create a new one
+    await this.prisma.refreshToken.delete({
+      where: { id: tokenRecord.id },
+    });
+
+    const new_refresh_token = crypto.randomBytes(40).toString('hex');
+    const expires_at = new Date();
+    expires_at.setDate(expires_at.getDate() + 7);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        id_user: tokenRecord.user.id_user,
+        token: new_refresh_token,
+        expires_at,
+      },
+    });
+
+    return { access_token, refresh_token: new_refresh_token };
   }
 
   async logout(refreshToken: string) {

@@ -2,14 +2,16 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Post,
+  Req,
+  Res,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -38,8 +40,18 @@ export class AuthController {
   @ApiOperation({ summary: 'Login dan dapatkan JWT access token' })
   @ApiResponse({ status: 200, description: 'Login berhasil, token dikembalikan' })
   @ApiResponse({ status: 401, description: 'Email atau password salah' })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.login(dto);
+    res.cookie('refreshToken', result.refresh_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return {
+      access_token: result.access_token,
+      user: result.user,
+    };
   }
 
   @Get('profile')
@@ -56,44 +68,45 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Dapatkan access token baru menggunakan refresh token',
-    description:
-      'Refresh token dikirim melalui header `x-refresh-token`. Tidak memerlukan Bearer token dan tidak menerima body.',
-  })
-  @ApiHeader({
-    name: 'x-refresh-token',
-    description: 'Refresh token aktif',
-    required: true,
+    description: 'Refresh token dibaca otomatis melalui HttpOnly cookie.',
   })
   @ApiResponse({ status: 200, description: 'Access token baru dikembalikan' })
   @ApiResponse({
     status: 401,
     description: 'Refresh token tidak valid, kadaluarsa, atau tidak ada',
   })
-  async refresh(@Headers('x-refresh-token') refreshToken?: string) {
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = req.cookies?.refreshToken as string | undefined;
     if (!refreshToken) {
-      throw new UnauthorizedException('Missing refresh token');
+      throw new UnauthorizedException('Missing refresh token cookie');
     }
-    return this.authService.refresh(refreshToken);
+    const result = await this.authService.refresh(refreshToken);
+    res.cookie('refreshToken', result.refresh_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return { access_token: result.access_token };
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Logout dan hapus refresh token',
-    description:
-      'Refresh token dikirim melalui header `x-refresh-token`. Tidak memerlukan Bearer token dan tidak menerima body.',
-  })
-  @ApiHeader({
-    name: 'x-refresh-token',
-    description: 'Refresh token aktif',
-    required: true,
+    description: 'Menghapus sesi dan cookie refresh token.',
   })
   @ApiResponse({ status: 200, description: 'Logout berhasil' })
-  @ApiResponse({ status: 401, description: 'Refresh token tidak ada' })
-  async logout(@Headers('x-refresh-token') refreshToken?: string) {
-    if (!refreshToken) {
-      throw new UnauthorizedException('Missing refresh token');
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = req.cookies?.refreshToken as string | undefined;
+    if (refreshToken) {
+      await this.authService.logout(refreshToken);
     }
-    return this.authService.logout(refreshToken);
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+    return { success: true };
   }
 }
