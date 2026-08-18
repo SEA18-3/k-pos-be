@@ -283,9 +283,9 @@ describe('API Integration Flow (e2e)', () => {
         .post('/api/v1/reconciliations')
         .set('Authorization', `Bearer ${accessToken}`)
         .send({
-          id_transaction: transactionId,
+          id_payment: paymentId,
           reason: 'Payment mismatch jest test',
-          evidence: 'test-evidence.png',
+          evidence_note: 'test-evidence.png',
         })
         .expect(201);
 
