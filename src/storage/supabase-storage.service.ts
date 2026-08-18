@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
 import { MulterFile } from '../common/types/multer-file';
+import * as WebSocket from 'ws';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -36,7 +37,15 @@ export class SupabaseStorageService {
       );
     }
 
-    this.supabase = createClient(url, serviceRoleKey);
+    this.supabase = createClient(url, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+      },
+      realtime: {
+        // @ts-ignore
+        transport: WebSocket,
+      },
+    });
     return this.supabase;
   }
 
