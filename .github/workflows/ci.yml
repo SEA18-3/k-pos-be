@@ -81,7 +81,7 @@ jobs:
         run: |
           npx prisma db push --accept-data-loss
           npm run build
-          node dist/main.js &
+          node dist/src/main.js &
           echo "Waiting for server to be ready..."
           for i in $(seq 1 30); do
             curl -sf http://localhost:3000/api/v1/health && break
