@@ -47,6 +47,12 @@ enum SyncStatus {
   SYNC_CONFLICT
 }
 
+enum ReconciliationStatus {
+  OPEN
+  RESOLVED_VALID
+  RESOLVED_INVALID
+}
+
 enum DeviceStatus {
   UNPAIRED
   PAIRED
@@ -81,7 +87,8 @@ model User {
   refreshTokens          RefreshToken[]
   voidedTransactions     Transaction[]           @relation("VoidedTransactions")
   verifiedPayments       Payment[]               @relation("VerifiedPayments")
-  handledReconciliations Reconciliation[]        @relation("HandledReconciliations")
+  openedReconciliations  Reconciliation[]        @relation("OpenedReconciliations")
+  resolvedReconciliations Reconciliation[]       @relation("ResolvedReconciliations")
 
   @@index([email])
   @@index([role])
@@ -107,7 +114,6 @@ model Merchant {
   payments        Payment[]
   inventory       Inventory[]
   stockHistories  StockHistory[]
-  reconciliations Reconciliation[]
 
   @@index([is_active])
 }
@@ -237,6 +243,7 @@ model Transaction {
   subtotal Decimal @db.Decimal(12, 2)
 
   offline_uuid String? @unique
+  payload_hash String?
 
   notes String?
 
@@ -255,7 +262,6 @@ model Transaction {
   correctionsAsNew TransactionCorrection[] @relation("NewTransaction")
   stockHistories   StockHistory[]
   syncQueues       SyncQueue[]
-  reconciliation   Reconciliation?
 
   @@unique([id_device, offline_uuid])
   @@index([id_merchant])
@@ -275,6 +281,9 @@ model DetailTransaction {
   quantity       Int
   unit_price     Decimal  @db.Decimal(12, 2)
   subtotal       Decimal  @db.Decimal(12, 2)
+  product_name   String
+  sku_snapshot   String
+  catalog_version DateTime
   created_at     DateTime @default(now())
 
   transaction Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
@@ -310,6 +319,7 @@ model Payment {
 
   transaction Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
   merchant    Merchant    @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
+  reconciliations Reconciliation[]
 
   @@index([id_transaction])
   @@index([id_merchant])
@@ -382,21 +392,24 @@ model RefreshToken {
 // RECONCILIATION
 
 model Reconciliation {
-  id_reconciliation String    @id @default(cuid())
-  id_transaction    String    @unique
-  id_merchant       String
-  reason            String
-  evidence          String?
-  handled_by        String?
-  resolution        String?
-  resolved_at       DateTime?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
+  id_reconciliation  String               @id @default(cuid())
+  id_payment         String
+  opened_by          String
+  reason             String
+  evidence_note      String?
+  status             ReconciliationStatus @default(OPEN)
+  resolved_by        String?
+  resolved_at        DateTime?
+  resolution_note    String?
+  id_correction      String?
+  created_at         DateTime             @default(now())
+  updated_at         DateTime             @updatedAt
 
-  transaction Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
-  merchant    Merchant    @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
-  handledBy   User?       @relation("HandledReconciliations", fields: [handled_by], references: [id_user], onDelete: Restrict)
+  payment            Payment   @relation(fields: [id_payment], references: [id_payment])
+  openedByUser       User      @relation("OpenedReconciliations", fields: [opened_by], references: [id_user])
+  resolvedByUser     User?     @relation("ResolvedReconciliations", fields: [resolved_by], references: [id_user])
 
-  @@index([id_merchant])
-  @@index([id_transaction])
+  @@index([id_payment])
+  @@index([status])
+  @@index([opened_by])
 }

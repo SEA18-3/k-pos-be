@@ -139,6 +139,9 @@ async function main() {
           quantity: 1,
           unit_price: 3500,
           subtotal: 3500,
+          product_name: 'Produk A',
+          sku_snapshot: 'SKU-A',
+          catalog_version: new Date('2026-08-01'),
         }
       }
     }
@@ -165,6 +168,9 @@ async function main() {
             quantity: 1,
             unit_price: 3500,
             subtotal: 3500,
+            product_name: 'Produk A',
+            sku_snapshot: 'SKU-A',
+            catalog_version: new Date('2026-08-01'),
           },
           {
             id_detail: 'DET-3',
@@ -172,6 +178,9 @@ async function main() {
             quantity: 1,
             unit_price: 5000,
             subtotal: 5000,
+            product_name: 'Produk B',
+            sku_snapshot: 'SKU-B',
+            catalog_version: new Date('2026-08-01'),
           }
         ]
       }
