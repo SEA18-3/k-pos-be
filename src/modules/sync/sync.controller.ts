@@ -15,7 +15,7 @@ export class SyncController {
 
   @Post()
   @HttpCode(HttpStatus.OK)
-  @Roles('OPERATOR')
+  @Roles('OWNER', 'OPERATOR', 'ENTRY')
   @ApiOperation({
     summary: 'Submit a batch of offline transactions for synchronization',
     description: `Endpoint inti untuk arsitektur Offline-First. 

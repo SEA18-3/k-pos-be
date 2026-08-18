@@ -1,27 +1,25 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
-import { CreateHealthDto } from './dto/create-health.dto';
-import { UpdateHealthDto } from './dto/update-health.dto';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class HealthService {
-  create(createHealthDto: CreateHealthDto) {
-    return 'This action adds a new health';
-  }
+  constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
-    return `This action returns all health`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} health`;
-  }
-
-  update(id: number, updateHealthDto: UpdateHealthDto) {
-    return `This action updates a #${id} health`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} health`;
+  async check() {
+    try {
+      // Jalankan query sangat ringan ke database
+      await this.prisma.$queryRaw`SELECT 1`;
+      return {
+        status: 'ok',
+        database: 'ok',
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      throw new InternalServerErrorException({
+        status: 'error',
+        database: 'disconnected',
+        error: error.message,
+      });
+    }
   }
 }

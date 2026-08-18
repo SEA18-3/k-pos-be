@@ -110,6 +110,7 @@ export class AuthService {
         full_name: user.full_name,
         email: user.email,
         role: user.role,
+        id_merchant: user.id_merchant,
         is_active: user.is_active,
       },
     };
@@ -160,6 +161,7 @@ export class AuthService {
         full_name: true,
         email: true,
         role: true,
+        id_merchant: true,
         is_active: true,
         created_at: true,
         updated_at: true,

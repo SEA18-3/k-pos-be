@@ -39,7 +39,7 @@ async function main() {
       email: 'admin@kpos.com',
       full_name: 'Super Admin',
       password: passwordHash,
-      role: UserRole.ADMIN,
+      role: UserRole.OWNER,
     },
   });
 

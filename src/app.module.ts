@@ -13,6 +13,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { HealthModule } from './modules/health/health.module';
 import { StorageModule } from './storage/storage.module';
+import { ReconciliationsModule } from './modules/reconciliations/reconciliations.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { StorageModule } from './storage/storage.module';
     SyncModule,
     HealthModule,
     StorageModule,
+    ReconciliationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

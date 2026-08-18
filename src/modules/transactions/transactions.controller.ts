@@ -20,7 +20,7 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   @Get()
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  @Roles(Role.OWNER, Role.OPERATOR)
   @ApiOperation({ summary: 'Get all transactions with filters and pagination' })
   @ApiResponse({ status: 200, description: 'Return list of transactions.' })
   findAll(@CurrentUser() user: JwtPayload, @Query() query: QueryTransactionsDto) {
@@ -28,7 +28,7 @@ export class TransactionsController {
   }
 
   @Get(':id')
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  @Roles(Role.OWNER, Role.OPERATOR)
   @ApiOperation({ summary: 'Get a transaction by id' })
   @ApiResponse({ status: 200, description: 'Return the transaction.' })
   @ApiResponse({ status: 404, description: 'Transaction not found.' })
@@ -37,7 +37,7 @@ export class TransactionsController {
   }
 
   @Patch(':id/void')
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  @Roles(Role.OWNER, Role.OPERATOR)
   @ApiOperation({ summary: 'Void a PENDING transaction' })
   @ApiResponse({ status: 200, description: 'Transaction successfully voided.' })
   @ApiResponse({ status: 400, description: 'Invalid transaction status.' })
@@ -51,9 +51,9 @@ export class TransactionsController {
   }
 
   @Post(':id/resolve')
-  @Roles(Role.OWNER, Role.ADMIN)
+  @Roles(Role.OWNER)
   @ApiOperation({
-    summary: 'Resolve a SYNC_CONFLICT transaction manually (OWNER/ADMIN only)',
+    summary: 'Resolve a SYNC_CONFLICT transaction manually (OWNER only)',
     description:
       'Gunakan action CONFIRM untuk memaksa konfirmasi transaksi (stok dipotong meski negatif). Gunakan VOID untuk membatalkan transaksi konflik.',
   })
@@ -69,9 +69,9 @@ export class TransactionsController {
   }
 
   @Post(':id/correct')
-  @Roles(Role.OWNER, Role.ADMIN)
+  @Roles(Role.OWNER)
   @ApiOperation({
-    summary: 'Correct a CONFIRMED transaction using Immutable Bridge pattern (OWNER/ADMIN only)',
+    summary: 'Correct a CONFIRMED transaction using Immutable Bridge pattern (OWNER only)',
     description:
       'Buat versi baru dari transaksi yang sudah CONFIRMED. Transaksi lama akan di-VOID (tidak dihapus). Stok lama direverted, stok baru dipotong. Catatan koreksi disimpan di TransactionCorrection.',
   })

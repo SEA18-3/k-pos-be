@@ -22,7 +22,7 @@ export class CreateUserDto {
     enum: ['OPERATOR', 'ENTRY'],
     example: 'OPERATOR',
     description:
-      'Role yang diizinkan: OPERATOR (kasir) atau ENTRY (staf input). OWNER & ADMIN tidak bisa dibuat via endpoint ini.',
+      'Role yang diizinkan: OPERATOR (kasir) atau ENTRY (staf input). OWNER tidak bisa dibuat via endpoint ini.',
   })
   @IsEnum(['OPERATOR', 'ENTRY'], {
     message: 'Role must be OPERATOR or ENTRY',

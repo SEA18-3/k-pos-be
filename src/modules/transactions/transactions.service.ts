@@ -163,8 +163,8 @@ export class TransactionsService {
           await tx.payment.update({
             where: { id_payment: transaction.payment.id_payment },
             data: {
-              reconciliation_note: dto.notes,
-              reconciled_at: new Date(),
+
+
             },
           });
         }
@@ -297,8 +297,8 @@ export class TransactionsService {
             transfer_ref: originalTx.payment.transfer_ref,
             verified_at: originalTx.payment.verified_at,
             verified_by: originalTx.payment.verified_by,
-            reconciliation_note: `Copied from corrected transaction ${originalTx.id_transaction}`,
-            reconciled_at: new Date(),
+
+
           },
         });
       }
