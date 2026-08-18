@@ -36,28 +36,28 @@ export class PaymentsController {
   @Get()
   @Roles('OWNER')
   @ApiOperation({
-    summary: 'List payments for the merchant (optional status filter)',
-    description: 'Returns all payments for the authenticated merchant. Owner role required.',
+    summary: 'Daftar pembayaran merchant (filter status opsional)',
+    description: 'Mengembalikan semua pembayaran untuk merchant yang terautentikasi. Memerlukan role Owner.',
   })
   @ApiQuery({
     name: 'status',
     required: false,
     enum: ['VERIFIED', 'FAILED'],
-    description: 'Filter by payment status',
+    description: 'Filter berdasarkan status pembayaran',
   })
-  @ApiResponse({ status: 200, description: 'List of payments returned' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden — Owner role required' })
+  @ApiResponse({ status: 200, description: 'Daftar pembayaran berhasil dikembalikan' })
+  @ApiResponse({ status: 401, description: 'Tidak terotorisasi' })
+  @ApiResponse({ status: 403, description: 'Dilarang — Memerlukan role Owner' })
   async findAll(@CurrentUser() user: JwtPayload, @Query('status') status?: PaymentStatusFilter) {
     return this.paymentsService.findAll(user, status);
   }
 
   @Get(':id')
   @Roles('OWNER')
-  @ApiOperation({ summary: 'Get a single payment by ID' })
-  @ApiParam({ name: 'id', description: 'Payment ID' })
-  @ApiResponse({ status: 200, description: 'Payment returned' })
-  @ApiResponse({ status: 404, description: 'Payment not found' })
+  @ApiOperation({ summary: 'Ambil data pembayaran tunggal berdasarkan ID' })
+  @ApiParam({ name: 'id', description: 'ID Pembayaran' })
+  @ApiResponse({ status: 200, description: 'Pembayaran berhasil dikembalikan' })
+  @ApiResponse({ status: 404, description: 'Pembayaran tidak ditemukan' })
   async findOne(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.paymentsService.findOne(user, id);
   }
@@ -66,15 +66,15 @@ export class PaymentsController {
   @Roles('OWNER')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Open a reconciliation case for a payment',
+    summary: 'Buka kasus rekonsiliasi untuk pembayaran',
     description:
-      'Opens a new OPEN reconciliation case for the given payment. ' +
-      'Use POST /reconciliations/:id/resolve to close it.',
+      'Membuka kasus rekonsiliasi baru dengan status OPEN untuk pembayaran yang diberikan. ' +
+      'Gunakan POST /reconciliations/:id/resolve untuk menyelesaikannya.',
   })
-  @ApiParam({ name: 'id', description: 'Payment ID to reconcile' })
-  @ApiResponse({ status: 201, description: 'Reconciliation case created' })
-  @ApiResponse({ status: 400, description: 'Already has an open case' })
-  @ApiResponse({ status: 404, description: 'Payment not found' })
+  @ApiParam({ name: 'id', description: 'ID Pembayaran yang akan direkonsiliasi' })
+  @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil dibuat' })
+  @ApiResponse({ status: 400, description: 'Sudah memiliki kasus rekonsiliasi yang terbuka' })
+  @ApiResponse({ status: 404, description: 'Pembayaran tidak ditemukan' })
   async reconcile(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,

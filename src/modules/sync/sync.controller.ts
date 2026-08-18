@@ -40,7 +40,7 @@ export class SyncController {
   @HttpCode(HttpStatus.OK)
   @Roles('OWNER', 'OPERATOR', 'ENTRY')
   @ApiOperation({
-    summary: 'Submit a batch of offline transactions for synchronization',
+    summary: 'Kirim batch transaksi offline untuk sinkronisasi',
     description: `Endpoint inti untuk arsitektur Offline-First. 
 Menerima batch transaksi dari perangkat Kasir dan mem-publish-nya ke RabbitMQ secara asinkron (latency < 50ms).
 **Catatan Penting:** 
@@ -51,7 +51,7 @@ Menerima batch transaksi dari perangkat Kasir dan mem-publish-nya ke RabbitMQ se
   @ApiBody({ type: SyncBatchDto })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Batch received and queued for processing in RabbitMQ',
+    description: 'Batch diterima dan dimasukkan ke dalam antrean RabbitMQ',
     schema: {
       example: {
         message: 'Batch diterima dan sedang diproses',
@@ -102,7 +102,7 @@ Menerima batch transaksi dari perangkat Kasir dan mem-publish-nya ke RabbitMQ se
   @Get('status')
   @Roles('OWNER', 'OPERATOR', 'ENTRY')
   @ApiOperation({ summary: 'Cek status sinkronisasi berdasarkan offline_uuid' })
-  @ApiQuery({ name: 'offline_uuid', required: true, description: 'Comma-separated list of UUIDs' })
+  @ApiQuery({ name: 'offline_uuid', required: true, description: 'Daftar UUID dipisahkan koma' })
   async getSyncStatus(@Query('offline_uuid') offline_uuid: string) {
     if (!offline_uuid) throw new BadRequestException('offline_uuid is required');
     return this.syncService.getStatusByOfflineUuids(offline_uuid.split(','));
