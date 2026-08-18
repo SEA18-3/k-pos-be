@@ -79,7 +79,10 @@ export class TransactionsController {
     status: 200,
     description: 'Transaksi berhasil dikoreksi. Mengembalikan data record TransactionCorrection.',
   })
-  @ApiResponse({ status: 400, description: 'Hanya transaksi berstatus CONFIRMED yang dapat dikoreksi.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Hanya transaksi berstatus CONFIRMED yang dapat dikoreksi.',
+  })
   @ApiResponse({ status: 404, description: 'Transaksi tidak ditemukan.' })
   correctTransaction(
     @CurrentUser() user: JwtPayload,

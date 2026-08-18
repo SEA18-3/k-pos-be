@@ -66,7 +66,10 @@ Menerima batch transaksi dari perangkat Kasir dan mem-publish-nya ke RabbitMQ se
     status: 400,
     description: 'Kesalahan Validasi (misal: UUID tidak valid, field wajib tidak diisi)',
   })
-  @ApiResponse({ status: 401, description: 'Tidak Terotorisasi - Token JWT tidak valid atau kedaluwarsa' })
+  @ApiResponse({
+    status: 401,
+    description: 'Tidak Terotorisasi - Token JWT tidak valid atau kedaluwarsa',
+  })
   @ApiResponse({ status: 403, description: 'Dilarang - Role user bukan OPERATOR' })
   @ApiHeader({
     name: 'X-Device-ID',

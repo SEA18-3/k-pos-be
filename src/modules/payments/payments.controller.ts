@@ -37,7 +37,8 @@ export class PaymentsController {
   @Roles('OWNER')
   @ApiOperation({
     summary: 'Daftar pembayaran merchant (filter status opsional)',
-    description: 'Mengembalikan semua pembayaran untuk merchant yang terautentikasi. Memerlukan role Owner.',
+    description:
+      'Mengembalikan semua pembayaran untuk merchant yang terautentikasi. Memerlukan role Owner.',
   })
   @ApiQuery({
     name: 'status',
