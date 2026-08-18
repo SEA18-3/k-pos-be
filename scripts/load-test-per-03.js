@@ -21,14 +21,13 @@ export default function () {
   // Masukkan JWT Token milik akun dengan role OPERATOR di sini
   // Tanpa token ini, NestJS akan menolak dengan 401 Unauthorized sebelum sempat menyentuh RabbitMQ.
   // nosemgrep: generic.secrets.security.detected-jwt-token.detected-jwt-token
-  const JWT_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJVLUxPQUQtS0FTSVIiLCJlbWFpbCI6Imthc2lyQGxvYWQuY29tIiwicm9sZSI6Ik9QRVJBVE9SIiwiaWRfbWVyY2hhbnQiOiJNLUxPQUQiLCJpYXQiOjE3ODY5NDc3MzEsImV4cCI6MTc4NzAzNDEzMX0.I6SRR8WJOe7uecKVy1LAM487yknQ_EOVeInbraz1zlo';
+  const JWT_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbXN5dDZnM20wMDA4djB1MnBqbmV3Y25wIiwiZW1haWwiOiJhbmRpQHRva28uY29tIiwicm9sZSI6Ik9QRVJBVE9SIiwiaWRfbWVyY2hhbnQiOiJjbXN5dDV3Zm8wMDA1djB1MjMzcWRjMHVrIiwiaWF0IjoxNzg3MDY3NDYxLCJleHAiOjE3ODcwNjgzNjF9.H5Y5vH4aBzMOp4xzUj_L6TZkkr2d_hmOFuzuPcPVFXc';
   
   // Generate array of 100 transactions dynamically to test NFR-PER-03 correctly
   const transactions = [];
   for (let i = 0; i < 100; i++) {
     transactions.push({
       offline_uuid: uuidv4(),
-      id_device: 'DEV-LOAD-TEST',
       created_at_local: new Date().toISOString(),
       subtotal: 10000,
       total: 10000,
@@ -37,14 +36,17 @@ export default function () {
           id_product: 'dummy-product-id', // Intentionally invalid to test DLQ isolation
           quantity: 2,
           unit_price: 5000,
-          subtotal: 10000
-        },
+          subtotal: 10000,
+          product_name: 'Kopi Susu Dummy',
+          sku_snapshot: 'DUMMY-SKU-01',
+          catalog_version: new Date().toISOString()
+        }
       ],
       payment: {
         method: 'CASH',
         amount: 10000,
         cash_received: 10000,
-        change_amount: 0
+        change_amount: 0,
       }
     });
   }
@@ -56,7 +58,8 @@ export default function () {
   const params = {
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${JWT_TOKEN}`
+      'Authorization': `Bearer ${JWT_TOKEN}`,
+      'X-Device-ID': 'DEV-LOAD-TEST'
     },
   };
 

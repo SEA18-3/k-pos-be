@@ -3,7 +3,7 @@ const crypto = require('crypto');
 async function main() {
   console.log("[Init] Preparing load test payload...");
 
-  const email = "kasir@load.com";
+  const email = "kasir@kpos.com";
   const password = "password123";
   let token;
   
@@ -24,8 +24,8 @@ async function main() {
     process.exit(1);
   }
 
-  let deviceId = 'DEV-LOAD-TEST';
-  let productId = 'dummy-product-id';
+  let deviceId = 'DEV-1';
+  let productId = 'cmsyt4ark00053wu2l9gczn5t';
   let productPrice = 10000;
 
   console.log("[Init] Generating dummy transactions...");
@@ -33,7 +33,6 @@ async function main() {
   for (let i = 0; i < 100; i++) {
     transactions.push({
       offline_uuid: crypto.randomUUID(),
-      id_device: deviceId,
       created_at_local: new Date().toISOString(),
       subtotal: productPrice,
       total: productPrice,
@@ -43,7 +42,10 @@ async function main() {
           id_product: productId,
           quantity: 1,
           unit_price: productPrice,
-          subtotal: productPrice
+          subtotal: productPrice,
+          product_name: 'Es Teh Manis',
+          sku_snapshot: 'SKU-002',
+          catalog_version: new Date().toISOString()
         }
       ],
       payment: {
@@ -61,7 +63,8 @@ async function main() {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+      'Authorization': `Bearer ${token}`,
+      'X-Device-ID': deviceId
     },
     body: payload
   };
@@ -85,20 +88,24 @@ async function main() {
     
     let processedCount = 0;
     while (processedCount < 100) {
-      // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request
-      const txRes = await fetch(`http://127.0.0.1:3000/api/v1/transactions?limit=100`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (txRes.ok) {
-         const txData = await txRes.json();
-         const batchUuids = new Set(transactions.map(t => t.offline_uuid));
-         const dataArray = Array.isArray(txData.data) ? txData.data : txData.data?.data || [];
-         const found = dataArray.filter(t => batchUuids.has(t.offline_uuid));
-         processedCount = found.length;
+      try {
+        // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request
+        const txRes = await fetch(`http://localhost:3000/api/v1/transactions?limit=100`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (txRes.ok) {
+           const txData = await txRes.json();
+           const batchUuids = new Set(transactions.map(t => t.offline_uuid));
+           const dataArray = Array.isArray(txData.data) ? txData.data : txData.data?.data || [];
+           const found = dataArray.filter(t => batchUuids.has(t.offline_uuid));
+           processedCount = found.length;
+        }
+      } catch (pollErr) {
+        // Ignore fetch errors during polling (e.g. ECONNRESET) and just retry
       }
       
       if (processedCount < 100) {
-         await new Promise(r => setTimeout(r, 100));
+         await new Promise(r => setTimeout(r, 200));
       }
     }
     
