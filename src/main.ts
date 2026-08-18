@@ -1,5 +1,6 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
+import * as fs from 'fs';
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
@@ -47,7 +48,6 @@ async function bootstrap() {
 
   // Auto-save pretty-printed openapi.json in development
   try {
-    const fs = require('fs');
     fs.writeFileSync('./openapi.json', JSON.stringify(document, null, 2));
     console.log('Spesifikasi OpenAPI yang rapi berhasil disimpan ke ./openapi.json');
   } catch (err) {
