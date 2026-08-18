@@ -26,9 +26,15 @@ export class ReconciliationsController {
       'Satu transaksi hanya bisa memiliki satu kasus rekonsiliasi aktif (status OPEN) dalam satu waktu.',
   })
   @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil dibuka.' })
-  @ApiResponse({ status: 400, description: 'Transaksi tidak ditemukan, tidak ada payment, atau sudah ada rekonsiliasi aktif.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Transaksi tidak ditemukan, tidak ada payment, atau sudah ada rekonsiliasi aktif.',
+  })
   @ApiResponse({ status: 401, description: 'Token tidak valid.' })
-  @ApiResponse({ status: 403, description: 'Hanya OWNER atau OPERATOR yang bisa membuka rekonsiliasi.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Hanya OWNER atau OPERATOR yang bisa membuka rekonsiliasi.',
+  })
   create(@CurrentUser() user: JwtPayload, @Body() createDto: CreateReconciliationDto) {
     return this.reconciliationsService.create(user, createDto);
   }
@@ -37,7 +43,8 @@ export class ReconciliationsController {
   @Roles(Role.OWNER)
   @ApiOperation({
     summary: 'Ambil semua kasus rekonsiliasi milik merchant',
-    description: 'Mengembalikan semua record rekonsiliasi merchant yang sedang login, diurutkan dari yang terbaru.',
+    description:
+      'Mengembalikan semua record rekonsiliasi merchant yang sedang login, diurutkan dari yang terbaru.',
   })
   @ApiResponse({ status: 200, description: 'Daftar kasus rekonsiliasi berhasil diambil.' })
   @ApiResponse({ status: 403, description: 'Hanya OWNER yang bisa melihat daftar rekonsiliasi.' })
@@ -57,7 +64,10 @@ export class ReconciliationsController {
       'Stok barang **tidak** dikembalikan karena barang sudah diserahkan ke pelanggan.',
   })
   @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil diselesaikan.' })
-  @ApiResponse({ status: 400, description: 'Kasus rekonsiliasi tidak ditemukan atau sudah diselesaikan sebelumnya.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Kasus rekonsiliasi tidak ditemukan atau sudah diselesaikan sebelumnya.',
+  })
   @ApiResponse({ status: 403, description: 'Hanya OWNER yang bisa menyelesaikan rekonsiliasi.' })
   resolve(
     @Param('id') id: string,

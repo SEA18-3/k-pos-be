@@ -172,7 +172,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
             await this.prisma.syncQueue.create({
               data: {
                 id_device: data.id_device,
-                id_transaction: null,       // No Transaction row — permanently failed before DB write
+                id_transaction: null, // No Transaction row — permanently failed before DB write
                 offline_uuid: data.offline_uuid,
                 operation: 'SYNC_BATCH_PERMANENTLY_FAILED',
                 payload: JSON.stringify(data),
@@ -335,7 +335,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.syncQueue.create({
         data: {
           id_device: data.id_device,
-          id_transaction: null,       // No Transaction row exists yet (failed before DB write)
+          id_transaction: null, // No Transaction row exists yet (failed before DB write)
           offline_uuid: data.offline_uuid,
           operation: 'SYNC_BATCH_REJECTED',
           payload: JSON.stringify(data),

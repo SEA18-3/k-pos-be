@@ -36,8 +36,13 @@ export class SyncService {
     });
 
     const failedQueues = await this.prisma.syncQueue.findMany({
-      where: { id_transaction: { in: offline_uuids } },
-      select: { id_transaction: true, status: true, last_error: true },
+      where: {
+        OR: [
+          { offline_uuid: { in: offline_uuids } },
+          { id_transaction: { in: offline_uuids } },
+        ],
+      },
+      select: { offline_uuid: true, id_transaction: true, status: true, last_error: true },
     });
 
     const results = offline_uuids.map((uuid) => {
@@ -50,7 +55,7 @@ export class SyncService {
           error: null,
         };
       }
-      const fail = failedQueues.find((f) => f.id_transaction === uuid);
+      const fail = failedQueues.find((f) => f.offline_uuid === uuid || f.id_transaction === uuid);
       if (fail) {
         return {
           offline_uuid: uuid,
