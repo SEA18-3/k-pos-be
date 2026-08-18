@@ -45,6 +45,15 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
+  // Auto-save pretty-printed openapi.json in development
+  try {
+    const fs = require('fs');
+    fs.writeFileSync('./openapi.json', JSON.stringify(document, null, 2));
+    console.log('Spesifikasi OpenAPI yang rapi berhasil disimpan ke ./openapi.json');
+  } catch (err) {
+    console.warn('Gagal menyimpan file openapi.json:', err);
+  }
+
   // 6. CORS
   const corsOrigins = process.env.CORS_ORIGINS;
   if (!corsOrigins || corsOrigins === '*') {

@@ -64,16 +64,16 @@ Menerima batch transaksi dari perangkat Kasir dan mem-publish-nya ke RabbitMQ se
   })
   @ApiResponse({
     status: 400,
-    description: 'Validation Error (e.g., malformed UUID, missing fields)',
+    description: 'Kesalahan Validasi (misal: UUID tidak valid, field wajib tidak diisi)',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid or expired JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - User role is not OPERATOR' })
+  @ApiResponse({ status: 401, description: 'Tidak Terotorisasi - Token JWT tidak valid atau kedaluwarsa' })
+  @ApiResponse({ status: 403, description: 'Dilarang - Role user bukan OPERATOR' })
   @ApiHeader({
     name: 'X-Device-ID',
-    description: 'Device ID',
+    description: 'ID Perangkat Fisik (UUID)',
     required: true,
   })
-  async syncTransactions(@Headers('x-device-id') id_device: string, @Body() batch: SyncBatchDto) {
+  async syncTransactions(@Headers('X-Device-ID') id_device: string, @Body() batch: SyncBatchDto) {
     if (!id_device) {
       throw new BadRequestException('X-Device-ID header is required');
     }
