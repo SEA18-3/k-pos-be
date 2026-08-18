@@ -100,13 +100,13 @@ export class SyncProducerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publishBatch(transactions: (SyncTransactionDto & { id_device: string })[]) {
-    const payload = JSON.stringify({
+    const payload = {
       pattern: 'sync_transaction_batch',
       data: transactions,
-    });
+    };
 
     try {
-      await this.publishWithConfirm('sync.transactions', payload);
+      await this.publishWithConfirm('sync.transactions', payload, 'sync_transaction_batch');
       this.logger.log(`Queued batch of ${transactions.length} transactions (publisher confirm ✓)`);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
@@ -121,17 +121,26 @@ export class SyncProducerService implements OnModuleInit, OnModuleDestroy {
   // Private helpers
   // ──────────────────────────────────────────────────────────────────────────
 
-  private publishWithConfirm(queue: string, payload: string): Promise<void> {
+  private publishWithConfirm(queue: string, payload: any, pattern?: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(`Publisher confirm timed out after ${PUBLISH_CONFIRM_TIMEOUT_MS}ms`));
       }, PUBLISH_CONFIRM_TIMEOUT_MS);
 
+      const options: {
+        persistent: boolean;
+        contentType: string;
+        headers?: Record<string, string>;
+      } = {
+        persistent: true,
+        contentType: 'application/json',
+      };
+      if (pattern) {
+        options.headers = { pattern };
+      }
+
       this.channelWrapper
-        .sendToQueue(queue, Buffer.from(payload), {
-          persistent: true,
-          contentType: 'application/json',
-        })
+        .sendToQueue(queue, payload, options)
         .then(() => {
           clearTimeout(timer);
           resolve();
@@ -154,12 +163,12 @@ export class SyncProducerService implements OnModuleInit, OnModuleDestroy {
     const queue =
       attempt === 1 ? 'sync.retry.5s' : attempt === 2 ? 'sync.retry.30s' : 'sync.retry.120s';
 
-    const payload = JSON.stringify({
+    const payload = {
       pattern: 'sync_transaction_batch',
       data: transactions,
-    });
+    };
     try {
-      await this.publishWithConfirm(queue, payload);
+      await this.publishWithConfirm(queue, payload, 'sync_transaction_batch');
       this.logger.log(`Routed batch to ${queue} (attempt ${attempt})`);
     } catch (err) {
       this.logger.error(`Failed to route to retry queue ${queue}: ${err}`);

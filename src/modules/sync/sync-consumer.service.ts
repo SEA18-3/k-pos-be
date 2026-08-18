@@ -45,7 +45,9 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         await channel.consume('sync.dlq', async (msg: any) => {
           if (!msg) return;
           try {
-            const content = JSON.parse(msg.content.toString());
+            const rawContent = msg.content.toString();
+            this.logger.debug(`Raw DLQ message: ${rawContent.substring(0, 500)}`);
+            const content = JSON.parse(rawContent);
             // NestJS envelope formats data as { pattern, data } or fallback directly
             const transactions = content.data || content;
             await this.handleDlqMessage(transactions);
@@ -122,9 +124,23 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
   async handleDlqMessage(
     transactions: (SyncTransactionDto & { id_device: string; _retryAttempt?: number })[],
   ) {
-    this.logger.warn(`DLQ received ${transactions.length} permanently failed transaction(s).`);
+    if (!Array.isArray(transactions)) {
+      this.logger.warn(`DLQ received non-array payload. Ignoring.`);
+      return;
+    }
 
-    for (const data of transactions) {
+    // Filter out invalid items
+    const validTransactions = transactions.filter(
+      (t) => t && typeof t === 'object' && t.offline_uuid && t.id_device,
+    );
+    if (validTransactions.length === 0) {
+      this.logger.warn(`DLQ payload contains no valid transactions. Ignoring.`);
+      return;
+    }
+
+    this.logger.warn(`DLQ received ${validTransactions.length} permanently failed transaction(s).`);
+
+    for (const data of validTransactions) {
       const attempt = (data._retryAttempt ?? 0) + 1;
 
       if (attempt <= MAX_RETRIES) {
