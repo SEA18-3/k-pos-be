@@ -84,7 +84,7 @@ jobs:
           node dist/src/main.js &
           echo "Waiting for server to be ready..."
           for i in $(seq 1 30); do
-            curl -sf http://localhost:3000/api/v1/health && break
+            curl -sf http://localhost:3000/health && break
             echo "Attempt $i: server not ready, retrying in 2s..."
             sleep 2
           done
