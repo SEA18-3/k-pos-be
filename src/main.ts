@@ -76,12 +76,22 @@ async function bootstrap() {
 
   // 8. Start server
   const port = process.env.PORT || 3000;
-  await app.startAllMicroservices();
+
+  // Start RabbitMQ microservice — degraded mode if broker is unavailable
+  try {
+    await app.startAllMicroservices();
+    console.log(`RabbitMQ Worker is listening to 'sync.transactions'`);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[DEGRADED] RabbitMQ unavailable at startup: ${error}. HTTP API will start without consumer.`,
+    );
+  }
+
   await app.listen(port);
 
   console.log(`Application is running on: http://localhost:${port}`);
   console.log(`Swagger documentation is available at: http://localhost:${port}/docs`);
-  console.log(`RabbitMQ Worker is listening to 'sync.transactions'`);
 }
 
 bootstrap().catch((err) => {

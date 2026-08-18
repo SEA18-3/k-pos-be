@@ -216,17 +216,30 @@ describe('API Integration Flow (e2e)', () => {
       expect(res.body.status).toBe('success');
     });
 
-    it('11. GET /api/v1/sync/status', async () => {
-      const res = await request(baseURL)
-        .get(`/api/v1/sync/status?offline_uuid=${offlineUuid}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+    it('11. GET /api/v1/sync/status (with polling retry)', async () => {
+      let retries = 5;
+      let status = 'UNKNOWN';
+      let item: any;
 
-      expect(res.body.status).toBe('success');
-      const item = res.body.data.data.find((d: any) => d.offline_uuid === offlineUuid);
-      expect(item).toBeDefined();
+      while (retries > 0 && status === 'UNKNOWN') {
+        const res = await request(baseURL)
+          .get(`/api/v1/sync/status?offline_uuid=${offlineUuid}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(200);
 
-      if (item.status === 'SYNCED' || item.status === 'CONFLICT') {
+        expect(res.body.status).toBe('success');
+        item = res.body.data.data.find((d: any) => d.offline_uuid === offlineUuid);
+        expect(item).toBeDefined();
+
+        status = item.status;
+        if (status === 'UNKNOWN') {
+          retries--;
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+
+      expect(status).not.toBe('UNKNOWN');
+      if (status === 'SYNCED' || status === 'CONFLICT') {
         transactionId = item.transaction_id;
       }
     });

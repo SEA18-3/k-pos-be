@@ -14,11 +14,11 @@ export class HealthService {
         database: 'ok',
         timestamp: new Date().toISOString(),
       };
-    } catch (error) {
+    } catch (error: unknown) {
       throw new InternalServerErrorException({
         status: 'error',
         database: 'disconnected',
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
