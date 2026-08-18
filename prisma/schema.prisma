@@ -403,7 +403,6 @@ model Reconciliation {
   resolved_by        String?
   resolved_at        DateTime?
   resolution_note    String?
-  id_correction      String?
   created_at         DateTime             @default(now())
   updated_at         DateTime             @updatedAt
 
