@@ -11,6 +11,12 @@ services:
       POSTGRES_DB: kpos_db
     ports:
       - '5432:5432'
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
     volumes:
       - kpos-pg-data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -25,6 +31,14 @@ services:
     ports:
       - '5672:5672' # AMQP protocol port
       - '15672:15672' # Management UI port (http://localhost:15672)
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /var/run/rabbitmq
+      - /var/log/rabbitmq
+      - /var/lib/rabbitmq/mnesia
     volumes:
       - kpos-rmq-data:/var/lib/rabbitmq
     restart: unless-stopped

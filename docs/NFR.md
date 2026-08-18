@@ -8,7 +8,7 @@
 | NFR-PER-02 | Backend transaction processing | 1 transaksi (sudah di-consume worker dari queue): validasi + duplicate check + confirm + inventory update selesai < 200 ms |
 | NFR-PER-03 | Batch sync performance | 1 batch (maks. 100 transaksi) selesai diproses < 5 detik, dengan worker berjalan paralel |
 
-*100ms mengacu pada ambang "instant" (Nielsen Norman Group, response time UX research); 200 ms digunakan sebagai target latency backend untuk menjaga queue dapat diproses dengan cepat*
+*100ms mengacu pada ambang "instant" (Nielsen Norman Group, response time UX research); 200 ms digunakan sebagai target latency backend untuk menjaga queue dapat diproses dengan cepat, sedangkan 5 detik memfasilitasi pemrosesan 1 batch utuh di sisi worker secara asinkron*
 
 ## b. Availability
 
