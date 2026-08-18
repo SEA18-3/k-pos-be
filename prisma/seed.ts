@@ -203,19 +203,24 @@ async function main() {
   });
 
   // 6. Create Reconciliation exception record for testing
-  await prisma.reconciliation.upsert({
-    where: { id_transaction: trxConfirmed.id_transaction },
-    update: {},
-    create: {
-      id_transaction: trxConfirmed.id_transaction,
-      id_merchant: merchant.id_merchant,
-      reason: 'QRIS payment mismatch, customer transfer failed to settle',
-      evidence: 'https://supabase.co/storage/v1/object/public/k-pos-images/receipt.png',
-      handled_by: owner.id_user,
-      resolution: 'Invalid payment, correction voided',
-      resolved_at: new Date(),
-    }
+  const existingReconciliation = await prisma.reconciliation.findFirst({
+    where: { id_payment: payment.id_payment },
   });
+
+  if (!existingReconciliation) {
+    await prisma.reconciliation.create({
+      data: {
+        id_payment: payment.id_payment,
+        reason: 'QRIS payment mismatch, customer transfer failed to settle',
+        evidence_note: 'https://supabase.co/storage/v1/object/public/k-pos-images/receipt.png',
+        opened_by: owner.id_user,
+        status: 'RESOLVED_INVALID',
+        resolved_by: owner.id_user,
+        resolution_note: 'Invalid payment, correction voided',
+        resolved_at: new Date(),
+      }
+    });
+  }
 
   // 7. Create a dummy Transaction Correction (Immutable Bridge)
   const trxOld = await prisma.transaction.upsert({
