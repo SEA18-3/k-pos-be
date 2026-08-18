@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'MERCHANT', 'KASIR', 'SUPERVISOR');
+CREATE TYPE "UserRole" AS ENUM ('OWNER', 'OPERATOR', 'ENTRY');
 
 -- CreateEnum
 CREATE TYPE "TransactionStatus" AS ENUM ('PENDING', 'CONFIRMED', 'VOIDED', 'FAILED');
@@ -8,10 +8,13 @@ CREATE TYPE "TransactionStatus" AS ENUM ('PENDING', 'CONFIRMED', 'VOIDED', 'FAIL
 CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'STATIC_QRIS', 'BANK_TRANSFER');
 
 -- CreateEnum
-CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'VERIFIED', 'FAILED', 'RECONCILED');
+CREATE TYPE "PaymentStatus" AS ENUM ('VERIFIED', 'FAILED');
 
 -- CreateEnum
 CREATE TYPE "SyncStatus" AS ENUM ('PENDING_SYNC', 'SYNCING', 'SYNCED', 'SYNC_FAILED', 'SYNC_CONFLICT');
+
+-- CreateEnum
+CREATE TYPE "DeviceStatus" AS ENUM ('UNPAIRED', 'PAIRED', 'REVOKED');
 
 -- CreateEnum
 CREATE TYPE "StockMovementType" AS ENUM ('SALE', 'ADJUSTMENT', 'RETURN', 'CORRECTION');
@@ -23,24 +26,12 @@ CREATE TABLE "User" (
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
     "role" "UserRole" NOT NULL,
+    "id_merchant" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id_user")
-);
-
--- CreateTable
-CREATE TABLE "UserMerchant" (
-    "id" TEXT NOT NULL,
-    "id_user" TEXT NOT NULL,
-    "id_merchant" TEXT NOT NULL,
-    "role" "UserRole" NOT NULL,
-    "permissions" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "UserMerchant_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -64,10 +55,11 @@ CREATE TABLE "Device" (
     "id_merchant" TEXT NOT NULL,
     "id_user" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "device_id_hash" TEXT NOT NULL,
+    "device_id_hash" TEXT,
+    "pairing_code" TEXT,
+    "status" "DeviceStatus" NOT NULL DEFAULT 'UNPAIRED',
     "last_online_at" TIMESTAMP(3),
     "last_sync_at" TIMESTAMP(3),
-    "sync_version" INTEGER NOT NULL DEFAULT 0,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -96,6 +88,7 @@ CREATE TABLE "Product" (
     "name" TEXT NOT NULL,
     "sku" TEXT NOT NULL,
     "price" DECIMAL(12,2) NOT NULL,
+    "image_url" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -123,7 +116,8 @@ CREATE TABLE "StockHistory" (
     "id_user" TEXT,
     "movement_type" "StockMovementType" NOT NULL,
     "quantity" INTEGER NOT NULL,
-    "reference_id" TEXT,
+    "id_transaction" TEXT,
+    "id_correction" TEXT,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "notes" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -146,7 +140,6 @@ CREATE TABLE "Transaction" (
     "total" DECIMAL(12,2) NOT NULL,
     "subtotal" DECIMAL(12,2) NOT NULL,
     "offline_uuid" TEXT,
-    "sync_version" INTEGER NOT NULL DEFAULT 0,
     "notes" TEXT,
     "voided_at" TIMESTAMP(3),
     "voided_by" TEXT,
@@ -175,7 +168,7 @@ CREATE TABLE "Payment" (
     "id_merchant" TEXT NOT NULL,
     "amount" DECIMAL(12,2) NOT NULL,
     "method" "PaymentMethod" NOT NULL,
-    "status" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "status" "PaymentStatus" NOT NULL DEFAULT 'VERIFIED',
     "cash_received" DECIMAL(12,2),
     "change_amount" DECIMAL(12,2),
     "qris_code" TEXT,
@@ -183,8 +176,6 @@ CREATE TABLE "Payment" (
     "verified_at" TIMESTAMP(3),
     "verified_by" TEXT,
     "verification_note" TEXT,
-    "reconciliation_note" TEXT,
-    "reconciled_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -194,11 +185,9 @@ CREATE TABLE "Payment" (
 -- CreateTable
 CREATE TABLE "TransactionCorrection" (
     "id_correction" TEXT NOT NULL,
-    "id_transaction" TEXT NOT NULL,
+    "id_old_transaction" TEXT NOT NULL,
+    "id_new_transaction" TEXT NOT NULL,
     "corrected_by" TEXT NOT NULL,
-    "correction_type" TEXT NOT NULL,
-    "old_values" TEXT NOT NULL,
-    "new_values" TEXT NOT NULL,
     "reason" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -222,6 +211,33 @@ CREATE TABLE "SyncQueue" (
     CONSTRAINT "SyncQueue_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "RefreshToken" (
+    "id" TEXT NOT NULL,
+    "id_user" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "expires_at" TIMESTAMP(3) NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "RefreshToken_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Reconciliation" (
+    "id_reconciliation" TEXT NOT NULL,
+    "id_transaction" TEXT NOT NULL,
+    "id_merchant" TEXT NOT NULL,
+    "reason" TEXT NOT NULL,
+    "evidence" TEXT,
+    "handled_by" TEXT,
+    "resolution" TEXT,
+    "resolved_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Reconciliation_pkey" PRIMARY KEY ("id_reconciliation")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -232,16 +248,10 @@ CREATE INDEX "User_email_idx" ON "User"("email");
 CREATE INDEX "User_role_idx" ON "User"("role");
 
 -- CreateIndex
-CREATE INDEX "UserMerchant_id_merchant_idx" ON "UserMerchant"("id_merchant");
-
--- CreateIndex
-CREATE UNIQUE INDEX "UserMerchant_id_user_id_merchant_key" ON "UserMerchant"("id_user", "id_merchant");
-
--- CreateIndex
 CREATE INDEX "Merchant_is_active_idx" ON "Merchant"("is_active");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Device_device_id_hash_key" ON "Device"("device_id_hash");
+CREATE UNIQUE INDEX "Device_pairing_code_key" ON "Device"("pairing_code");
 
 -- CreateIndex
 CREATE INDEX "Device_id_merchant_idx" ON "Device"("id_merchant");
@@ -313,7 +323,7 @@ CREATE INDEX "Transaction_confirmed_at_idx" ON "Transaction"("confirmed_at");
 CREATE INDEX "Transaction_synced_at_idx" ON "Transaction"("synced_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Transaction_id_merchant_offline_uuid_key" ON "Transaction"("id_merchant", "offline_uuid");
+CREATE UNIQUE INDEX "Transaction_id_device_offline_uuid_key" ON "Transaction"("id_device", "offline_uuid");
 
 -- CreateIndex
 CREATE INDEX "DetailTransaction_id_transaction_idx" ON "DetailTransaction"("id_transaction");
@@ -340,7 +350,10 @@ CREATE INDEX "Payment_status_idx" ON "Payment"("status");
 CREATE INDEX "Payment_created_at_idx" ON "Payment"("created_at");
 
 -- CreateIndex
-CREATE INDEX "TransactionCorrection_id_transaction_idx" ON "TransactionCorrection"("id_transaction");
+CREATE UNIQUE INDEX "TransactionCorrection_id_new_transaction_key" ON "TransactionCorrection"("id_new_transaction");
+
+-- CreateIndex
+CREATE INDEX "TransactionCorrection_id_old_transaction_idx" ON "TransactionCorrection"("id_old_transaction");
 
 -- CreateIndex
 CREATE INDEX "TransactionCorrection_corrected_by_idx" ON "TransactionCorrection"("corrected_by");
@@ -360,11 +373,26 @@ CREATE INDEX "SyncQueue_status_idx" ON "SyncQueue"("status");
 -- CreateIndex
 CREATE INDEX "SyncQueue_created_at_idx" ON "SyncQueue"("created_at");
 
--- AddForeignKey
-ALTER TABLE "UserMerchant" ADD CONSTRAINT "UserMerchant_id_user_fkey" FOREIGN KEY ("id_user") REFERENCES "User"("id_user") ON DELETE CASCADE ON UPDATE CASCADE;
+-- CreateIndex
+CREATE UNIQUE INDEX "RefreshToken_token_key" ON "RefreshToken"("token");
+
+-- CreateIndex
+CREATE INDEX "RefreshToken_id_user_idx" ON "RefreshToken"("id_user");
+
+-- CreateIndex
+CREATE INDEX "RefreshToken_token_idx" ON "RefreshToken"("token");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Reconciliation_id_transaction_key" ON "Reconciliation"("id_transaction");
+
+-- CreateIndex
+CREATE INDEX "Reconciliation_id_merchant_idx" ON "Reconciliation"("id_merchant");
+
+-- CreateIndex
+CREATE INDEX "Reconciliation_id_transaction_idx" ON "Reconciliation"("id_transaction");
 
 -- AddForeignKey
-ALTER TABLE "UserMerchant" ADD CONSTRAINT "UserMerchant_id_merchant_fkey" FOREIGN KEY ("id_merchant") REFERENCES "Merchant"("id_merchant") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "User" ADD CONSTRAINT "User_id_merchant_fkey" FOREIGN KEY ("id_merchant") REFERENCES "Merchant"("id_merchant") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Device" ADD CONSTRAINT "Device_id_merchant_fkey" FOREIGN KEY ("id_merchant") REFERENCES "Merchant"("id_merchant") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -394,6 +422,15 @@ ALTER TABLE "StockHistory" ADD CONSTRAINT "StockHistory_id_merchant_fkey" FOREIG
 ALTER TABLE "StockHistory" ADD CONSTRAINT "StockHistory_id_user_fkey" FOREIGN KEY ("id_user") REFERENCES "User"("id_user") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "StockHistory" ADD CONSTRAINT "StockHistory_id_transaction_fkey" FOREIGN KEY ("id_transaction") REFERENCES "Transaction"("id_transaction") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockHistory" ADD CONSTRAINT "StockHistory_id_correction_fkey" FOREIGN KEY ("id_correction") REFERENCES "TransactionCorrection"("id_correction") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_voided_by_fkey" FOREIGN KEY ("voided_by") REFERENCES "User"("id_user") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_id_merchant_fkey" FOREIGN KEY ("id_merchant") REFERENCES "Merchant"("id_merchant") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -409,13 +446,37 @@ ALTER TABLE "DetailTransaction" ADD CONSTRAINT "DetailTransaction_id_transaction
 ALTER TABLE "DetailTransaction" ADD CONSTRAINT "DetailTransaction_id_product_fkey" FOREIGN KEY ("id_product") REFERENCES "Product"("id_product") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Payment" ADD CONSTRAINT "Payment_verified_by_fkey" FOREIGN KEY ("verified_by") REFERENCES "User"("id_user") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_id_transaction_fkey" FOREIGN KEY ("id_transaction") REFERENCES "Transaction"("id_transaction") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_id_merchant_fkey" FOREIGN KEY ("id_merchant") REFERENCES "Merchant"("id_merchant") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "TransactionCorrection" ADD CONSTRAINT "TransactionCorrection_id_transaction_fkey" FOREIGN KEY ("id_transaction") REFERENCES "Transaction"("id_transaction") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TransactionCorrection" ADD CONSTRAINT "TransactionCorrection_id_old_transaction_fkey" FOREIGN KEY ("id_old_transaction") REFERENCES "Transaction"("id_transaction") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TransactionCorrection" ADD CONSTRAINT "TransactionCorrection_id_new_transaction_fkey" FOREIGN KEY ("id_new_transaction") REFERENCES "Transaction"("id_transaction") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "TransactionCorrection" ADD CONSTRAINT "TransactionCorrection_corrected_by_fkey" FOREIGN KEY ("corrected_by") REFERENCES "User"("id_user") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SyncQueue" ADD CONSTRAINT "SyncQueue_id_device_fkey" FOREIGN KEY ("id_device") REFERENCES "Device"("id_device") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SyncQueue" ADD CONSTRAINT "SyncQueue_id_transaction_fkey" FOREIGN KEY ("id_transaction") REFERENCES "Transaction"("id_transaction") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_id_user_fkey" FOREIGN KEY ("id_user") REFERENCES "User"("id_user") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Reconciliation" ADD CONSTRAINT "Reconciliation_id_transaction_fkey" FOREIGN KEY ("id_transaction") REFERENCES "Transaction"("id_transaction") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Reconciliation" ADD CONSTRAINT "Reconciliation_id_merchant_fkey" FOREIGN KEY ("id_merchant") REFERENCES "Merchant"("id_merchant") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Reconciliation" ADD CONSTRAINT "Reconciliation_handled_by_fkey" FOREIGN KEY ("handled_by") REFERENCES "User"("id_user") ON DELETE RESTRICT ON UPDATE CASCADE;
