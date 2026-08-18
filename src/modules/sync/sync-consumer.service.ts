@@ -157,7 +157,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         );
         try {
           const existingEntry = await this.prisma.syncQueue.findFirst({
-            where: { id_device: data.id_device, id_transaction: data.offline_uuid },
+            where: { id_device: data.id_device, offline_uuid: data.offline_uuid },
           });
           if (existingEntry) {
             await this.prisma.syncQueue.update({
@@ -172,7 +172,8 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
             await this.prisma.syncQueue.create({
               data: {
                 id_device: data.id_device,
-                id_transaction: data.offline_uuid,
+                id_transaction: null,       // No Transaction row — permanently failed before DB write
+                offline_uuid: data.offline_uuid,
                 operation: 'SYNC_BATCH_PERMANENTLY_FAILED',
                 payload: JSON.stringify(data),
                 last_error: `Exceeded ${MAX_RETRIES} retry attempts`,
@@ -334,14 +335,15 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.syncQueue.create({
         data: {
           id_device: data.id_device,
-          id_transaction: data.offline_uuid,
+          id_transaction: null,       // No Transaction row exists yet (failed before DB write)
+          offline_uuid: data.offline_uuid,
           operation: 'SYNC_BATCH_REJECTED',
           payload: JSON.stringify(data),
           last_error: error.message,
           status: SyncStatus.SYNC_FAILED,
         },
       });
-      this.logger.warn(`Transaction ${data.offline_uuid} written to SyncQueue (DLQ).`);
+      this.logger.warn(`Transaction ${data.offline_uuid} written to SyncQueue (SYNC_FAILED).`);
     } catch (dlqErr: unknown) {
       const e = dlqErr instanceof Error ? dlqErr.message : String(dlqErr);
       this.logger.error(`Failed to write to SyncQueue: ${e}`);

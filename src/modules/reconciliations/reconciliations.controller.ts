@@ -19,22 +19,46 @@ export class ReconciliationsController {
 
   @Post()
   @Roles(Role.OWNER, Role.OPERATOR)
-  @ApiOperation({ summary: 'Laporkan masalah transaksi (membuat rekonsiliasi baru)' })
-  @ApiResponse({ status: 201, description: 'Record rekonsiliasi berhasil dibuat.' })
+  @ApiOperation({
+    summary: 'Buka kasus rekonsiliasi pembayaran',
+    description:
+      'Membuat record rekonsiliasi baru ketika ditemukan masalah pada pembayaran transaksi yang sudah CONFIRMED. ' +
+      'Satu transaksi hanya bisa memiliki satu kasus rekonsiliasi aktif (status OPEN) dalam satu waktu.',
+  })
+  @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil dibuka.' })
+  @ApiResponse({ status: 400, description: 'Transaksi tidak ditemukan, tidak ada payment, atau sudah ada rekonsiliasi aktif.' })
+  @ApiResponse({ status: 401, description: 'Token tidak valid.' })
+  @ApiResponse({ status: 403, description: 'Hanya OWNER atau OPERATOR yang bisa membuka rekonsiliasi.' })
   create(@CurrentUser() user: JwtPayload, @Body() createDto: CreateReconciliationDto) {
     return this.reconciliationsService.create(user, createDto);
   }
 
   @Get()
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Ambil semua record rekonsiliasi milik merchant' })
+  @ApiOperation({
+    summary: 'Ambil semua kasus rekonsiliasi milik merchant',
+    description: 'Mengembalikan semua record rekonsiliasi merchant yang sedang login, diurutkan dari yang terbaru.',
+  })
+  @ApiResponse({ status: 200, description: 'Daftar kasus rekonsiliasi berhasil diambil.' })
+  @ApiResponse({ status: 403, description: 'Hanya OWNER yang bisa melihat daftar rekonsiliasi.' })
   findAll(@CurrentUser() user: JwtPayload) {
     return this.reconciliationsService.findAll(user);
   }
 
   @Post(':id/resolve')
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Selesaikan status kasus rekonsiliasi (VALID/INVALID)' })
+  @ApiOperation({
+    summary: 'Selesaikan kasus rekonsiliasi (VALID atau INVALID)',
+    description:
+      'Owner menyelesaikan kasus rekonsiliasi yang sedang OPEN. ' +
+      'Jika status = **RESOLVED_VALID**: kasus ditutup, transaksi & payment tetap CONFIRMED/VERIFIED. ' +
+      'Jika status = **RESOLVED_INVALID**: secara atomik (1) payment diubah ke FAILED, ' +
+      '(2) transaksi di-VOID untuk dikeluarkan dari laporan omzet. ' +
+      'Stok barang **tidak** dikembalikan karena barang sudah diserahkan ke pelanggan.',
+  })
+  @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil diselesaikan.' })
+  @ApiResponse({ status: 400, description: 'Kasus rekonsiliasi tidak ditemukan atau sudah diselesaikan sebelumnya.' })
+  @ApiResponse({ status: 403, description: 'Hanya OWNER yang bisa menyelesaikan rekonsiliasi.' })
   resolve(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,

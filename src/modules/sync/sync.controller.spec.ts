@@ -40,7 +40,7 @@ describe('SyncController', () => {
 
   describe('syncTransactions', () => {
     it('should publish batch and return success message', async () => {
-      const mockBatch: SyncBatchDto = {
+      const mockBatch: any = {
         transactions: [
           {
             offline_uuid: 'uuid-1',

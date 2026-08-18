@@ -65,7 +65,7 @@ describe('API Integration Flow (e2e)', () => {
       userId = res.body.data.user.id_user;
 
       // Save Set-Cookie array for refresh token
-      authCookies = res.headers['set-cookie'];
+      authCookies = res.headers['set-cookie'] as any;
       expect(authCookies).toBeDefined();
     });
 
@@ -80,7 +80,7 @@ describe('API Integration Flow (e2e)', () => {
 
       // Update tokens
       accessToken = res.body.data.access_token;
-      authCookies = res.headers['set-cookie'] || authCookies;
+      authCookies = (res.headers['set-cookie'] || authCookies) as any;
     });
 
     it('4. GET /api/v1/auth/profile', async () => {

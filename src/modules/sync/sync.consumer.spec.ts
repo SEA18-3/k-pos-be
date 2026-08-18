@@ -56,7 +56,7 @@ describe('SyncConsumerService', () => {
   });
 
   describe('handleSyncTransactionBatch', () => {
-    const mockTransactionPayload: SyncTransactionDto = {
+    const mockTransactionPayload: any = {
       offline_uuid: 'uuid-123',
       id_device: 'dev-1',
       created_at_local: '2023-01-01T10:00:00Z',
@@ -135,7 +135,7 @@ describe('SyncConsumerService', () => {
   });
 
   describe('handleDlq', () => {
-    const mockDlqPayload = {
+    const mockDlqPayload: any = {
       offline_uuid: 'uuid-dlq-1',
       id_device: 'dev-1',
       created_at_local: '2023-01-01T10:00:00Z',

@@ -355,7 +355,8 @@ model TransactionCorrection {
 model SyncQueue {
   id             String     @id @default(cuid())
   id_device      String
-  id_transaction String
+  id_transaction String?    // Optional: null if transaction never reached DB
+  offline_uuid   String?    // Original offline UUID for traceability
   operation      String
   payload        String
   retry_count    Int        @default(0)
@@ -365,11 +366,12 @@ model SyncQueue {
   created_at     DateTime   @default(now())
   updated_at     DateTime   @updatedAt
 
-  device      Device      @relation(fields: [id_device], references: [id_device], onDelete: Cascade)
-  transaction Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
+  device      Device       @relation(fields: [id_device], references: [id_device], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
 
   @@index([id_device])
   @@index([id_transaction])
+  @@index([offline_uuid])
   @@index([status])
   @@index([created_at])
 }

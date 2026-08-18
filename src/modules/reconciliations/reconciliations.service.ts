@@ -65,7 +65,13 @@ export class ReconciliationsService {
   async resolve(id: string, user: JwtPayload, resolveDto: ResolveReconciliationDto) {
     const reconciliation = await this.prisma.reconciliation.findUnique({
       where: { id_reconciliation: id },
-      include: { payment: true },
+      include: {
+        payment: {
+          include: {
+            transaction: true,
+          },
+        },
+      },
     });
 
     if (!reconciliation) {
@@ -80,14 +86,57 @@ export class ReconciliationsService {
       throw new BadRequestException('Reconciliation is already resolved');
     }
 
-    return this.prisma.reconciliation.update({
-      where: { id_reconciliation: id },
-      data: {
-        resolution_note: resolveDto.resolution,
-        status: resolveDto.status ?? 'RESOLVED_VALID',
-        resolved_by: user.sub,
-        resolved_at: new Date(),
-      },
+    const newStatus = resolveDto.status ?? 'RESOLVED_VALID';
+
+    if (newStatus === 'RESOLVED_VALID') {
+      return this.prisma.reconciliation.update({
+        where: { id_reconciliation: id },
+        data: {
+          resolution_note: resolveDto.resolution,
+          status: 'RESOLVED_VALID',
+          resolved_by: user.sub,
+          resolved_at: new Date(),
+        },
+      });
+    }
+
+    // RESOLVED_INVALID: Atomic operation to mark payment FAILED and void transaction
+    // NOTE: Stock is NOT rolled back — goods were already handed to the customer.
+    //       Only the financial/accounting record is corrected here.
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Update reconciliation status
+      const updatedReconciliation = await tx.reconciliation.update({
+        where: { id_reconciliation: id },
+        data: {
+          resolution_note: resolveDto.resolution,
+          status: 'RESOLVED_INVALID',
+          resolved_by: user.sub,
+          resolved_at: new Date(),
+        },
+      });
+
+      // 2. Mark Payment as FAILED (financial record correction)
+      await tx.payment.update({
+        where: { id_payment: reconciliation.id_payment },
+        data: { status: 'FAILED' },
+      });
+
+      // 3. Void the linked Transaction for accounting accuracy
+      //    (removes it from revenue calculations, but does NOT touch inventory)
+      const transaction = reconciliation.payment.transaction;
+      if (transaction && transaction.status !== 'VOIDED') {
+        await tx.transaction.update({
+          where: { id_transaction: transaction.id_transaction },
+          data: {
+            status: 'VOIDED',
+            voided_at: new Date(),
+            voided_by: user.sub,
+            void_reason: `Payment reconciled as INVALID. Recon ID: ${id}. Goods already delivered — stock unchanged.`,
+          },
+        });
+      }
+
+      return updatedReconciliation;
     });
   }
 }
