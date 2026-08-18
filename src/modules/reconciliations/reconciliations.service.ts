@@ -1,45 +1,42 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+
 import { CreateReconciliationDto } from './dto/create-reconciliation.dto';
 import { ResolveReconciliationDto } from './dto/resolve-reconciliation.dto';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { Role } from '../../common/enums/role.enum';
 
 @Injectable()
 export class ReconciliationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(user: JwtPayload, createDto: CreateReconciliationDto) {
-    const transaction = await this.prisma.transaction.findUnique({
-      where: { id_transaction: createDto.id_transaction },
-      include: { payment: true },
+    const payment = await this.prisma.payment.findUnique({
+      where: { id_payment: createDto.id_payment },
     });
 
-    if (!transaction) {
-      throw new NotFoundException('Transaction not found');
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
     }
 
-    if (transaction.id_merchant !== user.id_merchant) {
-      throw new BadRequestException('Transaction does not belong to your merchant');
-    }
-
-    if (!transaction.payment) {
-      throw new BadRequestException('Transaction has no payment to reconcile');
+    if (payment.id_merchant !== user.id_merchant) {
+      throw new BadRequestException('Payment does not belong to your merchant');
     }
 
     const existing = await this.prisma.reconciliation.findFirst({
-      where: { id_payment: transaction.payment.id_payment },
+      where: { id_payment: createDto.id_payment, status: 'OPEN' },
     });
 
     if (existing) {
-      throw new BadRequestException('Transaction payment is already under reconciliation');
+      throw new BadRequestException('Payment already has an open reconciliation case');
     }
 
     return this.prisma.reconciliation.create({
       data: {
-        id_payment: transaction.payment.id_payment,
+        id_payment: createDto.id_payment,
         opened_by: user.sub,
         reason: createDto.reason,
-        evidence_note: createDto.evidence,
+        evidence_note: createDto.evidence_note,
       },
     });
   }

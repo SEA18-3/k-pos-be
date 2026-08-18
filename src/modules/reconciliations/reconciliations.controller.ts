@@ -20,17 +20,16 @@ export class ReconciliationsController {
   @Post()
   @Roles(Role.OWNER, Role.OPERATOR)
   @ApiOperation({
-    summary: 'Buka kasus rekonsiliasi pembayaran',
+    summary: 'Buka kasus rekonsiliasi',
     description:
-      'Membuat record rekonsiliasi baru ketika ditemukan masalah pada pembayaran transaksi yang sudah CONFIRMED. ' +
-      'Satu transaksi hanya bisa memiliki satu kasus rekonsiliasi aktif (status OPEN) dalam satu waktu.',
+      'Membuka kasus rekonsiliasi baru dengan status OPEN untuk suatu payment. ' +
+      'Bisa dipanggil oleh Owner atau Operator.',
   })
-  @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil dibuka.' })
+  @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil dibuat.' })
   @ApiResponse({
     status: 400,
-    description: 'Transaksi tidak ditemukan, tidak ada payment, atau sudah ada rekonsiliasi aktif.',
+    description: 'Bad Request (misal: payment tidak ditemukan, atau sudah di-rekonsiliasi).',
   })
-  @ApiResponse({ status: 401, description: 'Token tidak valid.' })
   @ApiResponse({
     status: 403,
     description: 'Hanya OWNER atau OPERATOR yang bisa membuka rekonsiliasi.',
