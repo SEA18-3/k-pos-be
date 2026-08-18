@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, IsBoolean, Min } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 
@@ -13,8 +13,8 @@ export class CreateProductDto {
   @IsOptional()
   sku?: string;
 
-  @ApiProperty({ description: 'Harga produk', example: 15000 })
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @ApiProperty({ description: 'Harga produk (integer rupiah)', example: 15000 })
+  @IsInt()
   @Min(0)
   @Type(() => Number)
   price: number;
