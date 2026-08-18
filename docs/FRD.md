@@ -9,8 +9,9 @@ Dokumen ini adalah requirement produk K-POS. ID di sini dipakai oleh [traceabili
 | Checkout dan local receipt      |    ✓     |   —   |   —   |
 | Sync milik device aktif         |    ✓     |   —   |   —   |
 | Read active catalog             |    ✓     |   ✓   |   ✓   |
-| Manage catalog dan price        |    —     |   ✓   |   ✓   |
-| Stock adjustment/history        |    —     |   ✓   |   ✓   |
+| Manage catalog dan price        |    —     |   ✓   |   —   |
+| Stock adjustment                |    —     |   ✓   |   —   |
+| Read stock history              |    —     |   ✓   |   ✓   |
 | User/device administration      |    —     |   —   |   ✓   |
 | Conflict/payment reconciliation |    —     |   —   |   ✓   |
 | Audit dan sales reporting       |    —     |   —   |   ✓   |
@@ -36,12 +37,12 @@ Authorization selalu ditegakkan server-side. Wrong-role PWA hanya membantu navig
 
 | ID        | Requirement                                                                                                                                |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| FR-CAT-01 | Entry/Owner dapat membuat, mengubah, mengarsipkan, dan memulihkan product merchant sendiri.                                                |
+| FR-CAT-01 | Entry dapat membuat, mengubah, mengarsipkan, dan memulihkan product merchant sendiri.                                                      |
 | FR-CAT-02 | Product memuat stable ID, merchant-unique SKU, name, integer-rupiah price, image, active/archive state, dan monotonic catalog version.     |
 | FR-CAT-03 | Operator menyimpan last-known active catalog untuk checkout offline.                                                                       |
 | FR-CAT-04 | Backend menerima historical snapshot dari stale offline catalog selama product berasal dari merchant yang sama, termasuk setelah archived. |
 | FR-CAT-05 | Backend memvalidasi item arithmetic, tetapi tidak melakukan repricing terhadap historical offline sale.                                    |
-| FR-INV-01 | Entry/Owner dapat membuat stock adjustment dengan reason; setiap movement immutable dan auditable.                                         |
+| FR-INV-01 | Entry dapat membuat stock adjustment dengan reason; setiap movement immutable dan auditable; Owner dapat membaca history.                  |
 | FR-INV-02 | Tidak ada real-time reservation lintas device. Stock sale diterapkan setelah settlement melalui idempotent worker.                         |
 | FR-INV-03 | Stock shortage menghasilkan sync conflict, bukan silently dropping atau mutating sale.                                                     |
 
@@ -56,7 +57,7 @@ Authorization selalu ditegakkan server-side. Wrong-role PWA hanya membantu navig
 | FR-SYNC-05 | Request-shape validation bersifat all-or-nothing. Malformed item menolak batch sebelum receipt dibuat/publish.                                                                             |
 | FR-SYNC-06 | API membuat/reuse durable receipt lalu publish persistent message memakai publisher confirm. HTTP `200` berarti queued, bukan settled.                                                     |
 | FR-SYNC-07 | Uniqueness boundary `(device_id, offline_uuid)` plus canonical payload hash: duplicate-identical idempotent; duplicate-different menolak seluruh batch `409 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
-| FR-SYNC-08 | Client polling receipt dan memetakan `QUEUED                                                                                                                                               | PROCESSING | SYNCED | CONFLICT | FAILED` ke local delivery state. |
+| FR-SYNC-08 | Client polling receipt dan memetakan `QUEUED`, `PROCESSING`, `SYNCED`, `CONFLICT`, atau `FAILED` ke local delivery state.                                                                  |
 | FR-SYNC-09 | Consumer ACK hanya setelah PostgreSQL commit. Transient failure retry 5/30/120 detik; permanent failure langsung DLQ.                                                                      |
 | FR-SYNC-10 | Receipt dispatcher memulihkan receipt yang tersimpan tetapi belum terpublish. Rabbit outage menghasilkan retryable `503` pada sync tanpa mematikan REST non-sync.                          |
 | FR-SYNC-11 | DLQ consumer menandai receipt `FAILED`; Owner melihat failure dan hanya dapat retry error yang diklasifikasikan retryable.                                                                 |
@@ -64,16 +65,16 @@ Authorization selalu ditegakkan server-side. Wrong-role PWA hanya membantu navig
 
 ## Transaction dan reconciliation
 
-| ID        | Requirement                                                                                                                                               |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-TXN-01 | Confirmed ledger row dan item/payment snapshot bersifat append-only.                                                                                      |
-| FR-TXN-02 | Item menyimpan product ID, name, SKU, unit price, quantity, subtotal, dan catalog version snapshot. Money memakai integer rupiah.                         |
-| FR-TXN-03 | Conflict shortage dapat di-confirm Owner (negative stock + discrepancy, exactly once) atau di-void (tanpa stock movement).                                |
-| FR-TXN-04 | Void/correction atas confirmed transaction membuat `TransactionCorrection`; original row tidak diubah.                                                    |
-| FR-TXN-05 | API dan reporting menampilkan effective status/net effect dengan memperhitungkan correction chain.                                                        |
-| FR-PAY-01 | Cash langsung `VERIFIED`; Static QRIS/Bank Transfer mulai dari `PENDING`.                                                                                 |
-| FR-PAY-02 | Owner memeriksa payment `PENDING`: pembayaran valid menjadi `RECONCILED`, sedangkan pembayaran tidak masuk/tidak valid menjadi `FAILED`.                  |
-| FR-PAY-03 | Payment `FAILED` tidak mengubah transaction asli. Owner memakai append-only void/correction untuk membatalkan efek ledger dan reporting secara auditable. |
+| ID        | Requirement                                                                                                                                                                                                               |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-TXN-01 | Confirmed ledger row dan item/payment snapshot bersifat append-only.                                                                                                                                                      |
+| FR-TXN-02 | Item menyimpan product ID, name, SKU, unit price, quantity, subtotal, dan catalog version snapshot. Money memakai integer rupiah.                                                                                         |
+| FR-TXN-03 | Conflict shortage dapat di-confirm Owner (negative stock + discrepancy, exactly once) atau di-void (tanpa stock movement).                                                                                                |
+| FR-TXN-04 | Void/correction atas confirmed transaction membuat `TransactionCorrection`; original row tidak diubah.                                                                                                                    |
+| FR-TXN-05 | API dan reporting menampilkan effective status/net effect dengan memperhitungkan correction chain.                                                                                                                        |
+| FR-PAY-01 | Semua pembayaran yang sudah diperiksa Operator, termasuk Cash, Static QRIS, dan Bank Transfer, langsung dicatat `VERIFIED`; payment bukan approval queue normal.                                                          |
+| FR-PAY-02 | Bila kemudian ditemukan masalah, Owner membuka reconciliation exception terpisah berstatus `OPEN`, lalu menyelesaikannya sebagai `RESOLVED_VALID` atau `RESOLVED_INVALID`.                                                |
+| FR-PAY-03 | Resolution invalid mengubah payment menjadi `FAILED` dan wajib mereferensikan append-only void/correction agar efek ledger dan reporting dibatalkan secara auditable. Resolution valid mempertahankan payment `VERIFIED`. |
 
 ## Owner reporting dan audit
 
@@ -91,7 +92,7 @@ Authorization selalu ditegakkan server-side. Wrong-role PWA hanya membantu navig
 - Same `offline_uuid` pada device berbeda adalah sale berbeda yang valid.
 - `X-Device-ID` authoritative; sync item tidak mengirim `id_device`.
 - Conflict bukan settled. Receipt baru terminal setelah `SYNCED`, `CONFLICT`, atau `FAILED` dan local UI harus membedakannya.
-- Non-cash tetap tercatat sebagai sale, tetapi payment-nya belum final sampai Owner melakukan reconciliation.
+- Mayoritas payment tidak pernah memiliki reconciliation record. Reconciliation hanya exception workflow saat muncul masalah setelah sale.
 
 ## Out of scope
 

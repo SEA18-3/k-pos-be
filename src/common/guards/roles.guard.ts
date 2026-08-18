@@ -10,7 +10,7 @@ import { JwtPayload } from '../decorators/current-user.decorator';
  * Harus digunakan SETELAH JwtAuthGuard.
  * @example
  * @UseGuards(JwtAuthGuard, RolesGuard)
- * @Roles(Role.ADMIN)
+ * @Roles(Role.OWNER)
  * @Delete(':id')
  * remove() { ... }
  */
@@ -32,7 +32,7 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request & { user: JwtPayload }>();
     const user = request.user;
 
-    if (!user || !requiredRoles.includes(user.role as Role)) {
+    if (!user || !requiredRoles.includes(user.role)) {
       throw new ForbiddenException('You do not have permission to access this resource');
     }
 

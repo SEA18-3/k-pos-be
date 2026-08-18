@@ -30,6 +30,8 @@ Production recommendation boleh memisahkan static CDN/API/worker deployment, mem
 - Limits: sync batch max, rate limits, pool size/timeouts.
 - Frontend origins/paths untuk same-origin routing.
 
+Default supported profile memakai `DATABASE_POOL_MAX=32`, `RABBITMQ_PREFETCH=8`, dan reporting concurrency 4. Satu replica dapat memakai sampai 32 koneksi; budget cluster minimum adalah `(jumlah replica × 32) + koneksi migration/operasional + safety margin`. Jangan scale replica sebelum mengecek `max_connections`, pool wait, dan workload mix.
+
 `.env` dan secrets tidak boleh di-commit. Production secret harus unique per environment dan dapat dirotasi.
 
 ## Local bring-up

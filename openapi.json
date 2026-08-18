@@ -1,0 +1,1966 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "AppController_getHello",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Merchant and OWNER created atomically"
+          }
+        },
+        "summary": "Register merchant and its primary OWNER",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Login and start a rotating server-side session",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Rotate refresh cookie and issue a new access token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Revoke current refresh session without deleting queued sales",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "AuthController_getMe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/profile": {
+      "get": {
+        "operationId": "AuthController_getProfileCompatibility",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "post": {
+        "operationId": "UsersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User berhasil dibuat"
+          },
+          "409": {
+            "description": "Email sudah terdaftar"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Buat akun OPERATOR atau ENTRY baru (OWNER)",
+        "tags": [
+          "Users"
+        ]
+      },
+      "get": {
+        "operationId": "UsersController_findAll",
+        "parameters": [
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "description": "Filter berdasarkan role pengguna",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPERATOR",
+                "ENTRY",
+                "OWNER"
+              ]
+            }
+          },
+          {
+            "name": "is_active",
+            "required": false,
+            "in": "query",
+            "description": "Filter berdasarkan status aktif. true = aktif, false = nonaktif",
+            "schema": {
+              "example": true,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar user berhasil diambil"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lihat daftar semua user di merchant (OWNER)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/{id}": {
+      "patch": {
+        "operationId": "UsersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/status": {
+      "patch": {
+        "operationId": "UsersController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Status user berhasil diubah"
+          },
+          "403": {
+            "description": "User bukan milik merchant ini"
+          },
+          "404": {
+            "description": "User tidak ditemukan"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aktifkan atau nonaktifkan akun user (OWNER)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/change-password": {
+      "post": {
+        "operationId": "UsersController_changePassword",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/merchants/me": {
+      "get": {
+        "operationId": "MerchantsController_getMyMerchant",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Profil merchant berhasil diambil"
+          },
+          "401": {
+            "description": "Token tidak valid atau tidak ada"
+          },
+          "404": {
+            "description": "Merchant tidak ditemukan"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ambil profil merchant user yang sedang login (semua role)",
+        "tags": [
+          "Merchants"
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "post": {
+        "operationId": "DevicesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeviceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mendaftarkan device baru (Owner)",
+        "tags": [
+          "Devices"
+        ]
+      },
+      "get": {
+        "operationId": "DevicesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mendapatkan daftar semua kasir (Owner)",
+        "tags": [
+          "Devices"
+        ]
+      }
+    },
+    "/api/v1/devices/pair": {
+      "post": {
+        "operationId": "DevicesController_pairDevice",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairDeviceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Melakukan pairing menggunakan 6-digit kode (Public)",
+        "tags": [
+          "Devices"
+        ]
+      }
+    },
+    "/api/v1/devices/{id}": {
+      "delete": {
+        "operationId": "DevicesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mencabut akses / menghapus device (Owner)",
+        "tags": [
+          "Devices"
+        ]
+      }
+    },
+    "/api/v1/products": {
+      "post": {
+        "operationId": "ProductsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Menambahkan produk baru (ENTRY)",
+        "tags": [
+          "Products"
+        ]
+      },
+      "get": {
+        "operationId": "ProductsController_findAll",
+        "parameters": [
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Search term for product name or SKU",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Cursor for pagination (id_product)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Items per page",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "is_active",
+            "required": false,
+            "in": "query",
+            "description": "Filter by active status",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mendapatkan daftar produk beserta stok terkini (Semua Role)",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/products/{id}": {
+      "patch": {
+        "operationId": "ProductsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update detail produk (ENTRY)",
+        "tags": [
+          "Products"
+        ]
+      },
+      "delete": {
+        "operationId": "ProductsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Soft delete produk (ENTRY)",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/products/{id}/archive": {
+      "post": {
+        "operationId": "ProductsController_archive",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/products/{id}/restore": {
+      "post": {
+        "operationId": "ProductsController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/products/{id}/stock": {
+      "post": {
+        "operationId": "ProductsController_adjustStock",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustStockDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Penyesuaian stok manual / Opname (ENTRY)",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/products/{id}/stock-adjustments": {
+      "post": {
+        "operationId": "ProductsController_adjustStockCanonical",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustStockDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/products/{id}/stock-history": {
+      "get": {
+        "operationId": "ProductsController_stockHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/transactions": {
+      "get": {
+        "operationId": "TransactionsController_findAll",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "CONFIRMED"
+              ]
+            }
+          },
+          {
+            "name": "sync_status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING_SYNC",
+                "SYNCING",
+                "SYNCED",
+                "SYNC_FAILED",
+                "SYNC_CONFLICT"
+              ]
+            }
+          },
+          {
+            "name": "id_device",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "end_date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Cursor for pagination (id_transaction of the last item from previous page)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 10,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/api/v1/transactions/{id}": {
+      "get": {
+        "operationId": "TransactionsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/api/v1/transactions/{id}/void": {
+      "post": {
+        "operationId": "TransactionsController_void",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidTransactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/api/v1/transactions/{id}/conflict-resolution": {
+      "post": {
+        "operationId": "TransactionsController_resolveConflict",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveConflictDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/api/v1/transactions/{id}/resolve": {
+      "post": {
+        "operationId": "TransactionsController_resolveConflictCompatibility",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveConflictDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/api/v1/transactions/{id}/corrections": {
+      "post": {
+        "operationId": "TransactionsController_correct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectTransactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/api/v1/transactions/{id}/correct": {
+      "post": {
+        "operationId": "TransactionsController_correctCompatibility",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectTransactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/api/v1/payments": {
+      "get": {
+        "operationId": "PaymentsController_findAll",
+        "parameters": [
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/{id}/reconciliations": {
+      "post": {
+        "operationId": "PaymentsController_open",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenPaymentReconciliationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payment-reconciliations": {
+      "get": {
+        "operationId": "PaymentsController_list",
+        "parameters": [
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payment-reconciliations/{id}/resolve": {
+      "post": {
+        "operationId": "PaymentsController_resolve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolvePaymentReconciliationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/sync": {
+      "post": {
+        "operationId": "SyncController_accept",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncBatchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Durably queue an offline transaction batch; 200 does not mean settled",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/v1/sync/receipts": {
+      "get": {
+        "operationId": "SyncController_getReceipts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/v1/sync/failures": {
+      "get": {
+        "operationId": "SyncController_getFailures",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List terminal sync failures and stock conflicts for Owner action",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/v1/sync/receipts/{id}/retry": {
+      "post": {
+        "operationId": "SyncController_retry",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "HealthController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "HealthController_metrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/owner/dashboard": {
+      "get": {
+        "operationId": "ReportingController_dashboard",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Owner"
+        ]
+      }
+    },
+    "/api/v1/audit-events": {
+      "get": {
+        "operationId": "ReportingController_auditEvents",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Owner"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "K-POS API",
+    "description": "Canonical API for the K-POS multi-app offline-first platform",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "example": "Budi Santoso"
+          },
+          "email": {
+            "type": "string",
+            "example": "budi@example.com"
+          },
+          "password": {
+            "type": "string",
+            "example": "password123",
+            "minLength": 8
+          },
+          "merchant_name": {
+            "type": "string",
+            "example": "Toko Kopi Budi",
+            "description": "Nama toko/merchant"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Asia/Jakarta",
+            "default": "Asia/Jakarta"
+          }
+        },
+        "required": [
+          "full_name",
+          "email",
+          "password",
+          "merchant_name"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "budi@example.com"
+          },
+          "password": {
+            "type": "string",
+            "example": "password123"
+          },
+          "device_id": {
+            "type": "string",
+            "description": "Required for OPERATOR login on a paired counter"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "CreateUserDto": {
+        "type": "object",
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "example": "Andi Kasir"
+          },
+          "email": {
+            "type": "string",
+            "example": "andi@toko.com"
+          },
+          "password": {
+            "type": "string",
+            "example": "password123",
+            "minLength": 8
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "OPERATOR",
+              "ENTRY"
+            ],
+            "example": "OPERATOR",
+            "description": "Role yang diizinkan: OPERATOR (kasir) atau ENTRY (staf input). OWNER tidak bisa dibuat via endpoint ini."
+          }
+        },
+        "required": [
+          "full_name",
+          "email",
+          "password",
+          "role"
+        ]
+      },
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "full_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ENTRY",
+              "OPERATOR"
+            ]
+          }
+        }
+      },
+      "UpdateUserStatusDto": {
+        "type": "object",
+        "properties": {
+          "is_active": {
+            "type": "boolean",
+            "example": false,
+            "description": "true = aktifkan akun, false = nonaktifkan akun"
+          }
+        },
+        "required": [
+          "is_active"
+        ]
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "new_password": {
+            "type": "string",
+            "minLength": 8
+          }
+        }
+      },
+      "CreateDeviceDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Tablet Kasir Utama"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "PairDeviceDto": {
+        "type": "object",
+        "properties": {
+          "pairing_code": {
+            "type": "string",
+            "example": "123456"
+          },
+          "hardware_id": {
+            "type": "string",
+            "example": "SIMULASI-IPAD-1234"
+          }
+        },
+        "required": [
+          "pairing_code",
+          "hardware_id"
+        ]
+      },
+      "CreateProductDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nama produk",
+            "example": "Mie Goreng"
+          },
+          "sku": {
+            "type": "string",
+            "description": "SKU produk",
+            "example": "MG-001"
+          },
+          "price": {
+            "type": "number",
+            "description": "Harga produk",
+            "example": 15000
+          },
+          "is_active": {
+            "type": "boolean",
+            "description": "Status aktif",
+            "example": true
+          },
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "description": "Gambar produk (opsional, maks 5MB)"
+          }
+        },
+        "required": [
+          "name",
+          "price"
+        ]
+      },
+      "UpdateProductDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nama produk",
+            "example": "Mie Goreng"
+          },
+          "sku": {
+            "type": "string",
+            "description": "SKU produk",
+            "example": "MG-001"
+          },
+          "price": {
+            "type": "number",
+            "description": "Harga produk",
+            "example": 15000
+          },
+          "is_active": {
+            "type": "boolean",
+            "description": "Status aktif",
+            "example": true
+          },
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "description": "Gambar produk (opsional, maks 5MB)"
+          }
+        }
+      },
+      "AdjustStockDto": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "number",
+            "description": "Quantity to adjust (positive for addition, negative for reduction)",
+            "example": 50
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes for the stock adjustment",
+            "example": "Barang masuk dari supplier"
+          }
+        },
+        "required": [
+          "quantity"
+        ]
+      },
+      "VoidTransactionDto": {
+        "type": "object",
+        "properties": {
+          "void_reason": {
+            "type": "string",
+            "description": "Reason for voiding the transaction",
+            "example": "Customer left their wallet",
+            "minLength": 5
+          }
+        },
+        "required": [
+          "void_reason"
+        ]
+      },
+      "ResolveConflictDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "CONFIRM",
+              "VOID"
+            ],
+            "description": "CONFIRM = Paksa konfirmasi transaksi (stok akan dipotong meski negatif). VOID = Batalkan transaksi yang konflik.",
+            "example": "CONFIRM"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Catatan rekonsiliasi untuk audit trail",
+            "example": "Barang sudah diberikan ke pelanggan, stok disetujui meski negatif",
+            "minLength": 5
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "CorrectItemDto": {
+        "type": "object",
+        "properties": {
+          "id_product": {
+            "type": "string",
+            "example": "clxxxxx",
+            "description": "ID produk"
+          },
+          "quantity": {
+            "type": "number",
+            "example": 2,
+            "description": "Jumlah unit produk"
+          },
+          "unit_price": {
+            "type": "number",
+            "example": 15000,
+            "description": "Harga per unit (dalam rupiah)"
+          },
+          "subtotal": {
+            "type": "number",
+            "example": 30000,
+            "description": "Subtotal baris ini (quantity * unit_price)"
+          }
+        },
+        "required": [
+          "id_product",
+          "quantity",
+          "unit_price",
+          "subtotal"
+        ]
+      },
+      "CorrectTransactionDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Alasan koreksi yang wajib diisi untuk audit trail",
+            "example": "Kasir salah input kuantitas produk A",
+            "minLength": 10
+          },
+          "items": {
+            "description": "Daftar item yang benar (akan menggantikan item lama)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CorrectItemDto"
+            }
+          },
+          "subtotal": {
+            "type": "number",
+            "example": 45000,
+            "description": "Subtotal transaksi koreksi"
+          },
+          "total": {
+            "type": "number",
+            "example": 45000,
+            "description": "Total transaksi koreksi"
+          },
+          "notes": {
+            "type": "string",
+            "example": "Transfer BCA",
+            "description": "Catatan tambahan koreksi"
+          }
+        },
+        "required": [
+          "reason",
+          "items",
+          "subtotal",
+          "total"
+        ]
+      },
+      "OpenPaymentReconciliationDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5
+          },
+          "evidence_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ResolvePaymentReconciliationDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "VALID",
+              "INVALID"
+            ]
+          },
+          "resolution_note": {
+            "type": "string",
+            "minLength": 5
+          },
+          "inventory_returned": {
+            "type": "boolean",
+            "description": "Only relevant for INVALID resolution"
+          }
+        },
+        "required": [
+          "action",
+          "resolution_note"
+        ]
+      },
+      "SyncItemDto": {
+        "type": "object",
+        "properties": {
+          "id_product": {
+            "type": "string",
+            "example": "clprdxxx...",
+            "description": "CUID of the product"
+          },
+          "product_name": {
+            "type": "string",
+            "example": "Kopi Susu Aren"
+          },
+          "product_sku": {
+            "type": "string",
+            "example": "KSA-01"
+          },
+          "catalog_version": {
+            "type": "number",
+            "example": 7
+          },
+          "quantity": {
+            "type": "number",
+            "example": 2,
+            "description": "Quantity purchased"
+          },
+          "unit_price": {
+            "type": "number",
+            "example": 15000,
+            "description": "Price per unit at the time of transaction"
+          },
+          "subtotal": {
+            "type": "number",
+            "example": 30000,
+            "description": "Subtotal for this item (quantity * unit_price)"
+          }
+        },
+        "required": [
+          "id_product",
+          "product_name",
+          "product_sku",
+          "catalog_version",
+          "quantity",
+          "unit_price",
+          "subtotal"
+        ]
+      },
+      "SyncPaymentDto": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "STATIC_QRIS",
+              "BANK_TRANSFER"
+            ],
+            "example": "CASH"
+          },
+          "amount": {
+            "type": "number",
+            "example": 30000,
+            "description": "Total amount to be paid"
+          },
+          "cash_received": {
+            "type": "number",
+            "example": 50000,
+            "description": "Amount of cash received from customer"
+          },
+          "change_amount": {
+            "type": "number",
+            "example": 20000,
+            "description": "Change amount given to customer"
+          },
+          "qris_code": {
+            "type": "string",
+            "example": "QRIS-12345",
+            "description": "QRIS reference code if applicable"
+          },
+          "transfer_ref": {
+            "type": "string",
+            "example": "TRX-BANK-001",
+            "description": "Bank transfer reference if applicable"
+          }
+        },
+        "required": [
+          "method",
+          "amount"
+        ]
+      },
+      "SyncTransactionDto": {
+        "type": "object",
+        "properties": {
+          "offline_uuid": {
+            "type": "string",
+            "example": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            "description": "Locally generated UUID v4 or v7 for idempotency"
+          },
+          "created_at_local": {
+            "type": "string",
+            "example": "2026-08-16T10:00:00.000Z",
+            "description": "ISO-8601 timestamp of when the transaction occurred locally"
+          },
+          "subtotal": {
+            "type": "number",
+            "example": 30000,
+            "description": "Subtotal of all items"
+          },
+          "total": {
+            "type": "number",
+            "example": 30000,
+            "description": "Total after discounts/taxes (currently same as subtotal)"
+          },
+          "notes": {
+            "type": "string",
+            "example": "Customer in a rush",
+            "description": "Optional transaction notes"
+          },
+          "items": {
+            "description": "List of items purchased",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SyncItemDto"
+            }
+          },
+          "payment": {
+            "description": "Payment details for this transaction",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SyncPaymentDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "offline_uuid",
+          "created_at_local",
+          "subtotal",
+          "total",
+          "items",
+          "payment"
+        ]
+      },
+      "SyncBatchDto": {
+        "type": "object",
+        "properties": {
+          "transactions": {
+            "description": "Batch of offline transactions to synchronize (max 100)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SyncTransactionDto"
+            }
+          }
+        },
+        "required": [
+          "transactions"
+        ]
+      }
+    }
+  }
+}

@@ -18,6 +18,7 @@ erDiagram
     SYNC_RECEIPT ||--o| TRANSACTION : settles
     TRANSACTION ||--|{ DETAIL_TRANSACTION : snapshots
     TRANSACTION ||--|| PAYMENT : paid_by
+    PAYMENT ||--o{ PAYMENT_RECONCILIATION : exceptions
     TRANSACTION ||--o{ TRANSACTION_CORRECTION : old_effect
     TRANSACTION ||--o{ TRANSACTION_CORRECTION : replacement
     TRANSACTION ||--o{ STOCK_DISCREPANCY : explains
@@ -51,7 +52,8 @@ erDiagram
 | `sync_receipts`                  | Durable enqueue/status/publish state, payload hash, error classification |
 | `transactions`                   | Canonical append-only sale header                                        |
 | `detail_transactions`            | Product/name/SKU/price/version snapshot                                  |
-| `payments`                       | Method/reference snapshot dengan status `PENDING                         | VERIFIED | FAILED | RECONCILED` |
+| `payments`                       | Method/reference snapshot dengan status VERIFIED atau FAILED             |
+| `payment_reconciliations`        | Exception case, evidence, resolution, Owner, dan correction reference    |
 | `transaction_corrections`        | Append-only void/replacement relation dan reason                         |
 | `stock_histories`                | Idempotent stock movement ledger                                         |
 | `stock_discrepancies`            | Negative-stock/conflict resolution evidence                              |
@@ -67,8 +69,9 @@ erDiagram
 2. Sync accept: validate outside/inside as appropriate, then receipts/publish-intent atomically.
 3. Settlement: claim receipt + ledger/item/payment + outbox events + receipt status, one commit.
 4. Conflict confirm: resolution + stock effect/discrepancy + ledger/outbox, idempotent one commit.
-5. Correction: correction/replacement + outbox effect, one commit.
-6. Projection: claim outbox/application guard + aggregate upsert, one commit.
+5. Invalid payment resolution: reconciliation + failed payment + correction/void + outbox, one commit.
+6. Correction: correction/replacement + outbox effect, one commit.
+7. Projection: claim outbox/application guard + aggregate upsert, one commit.
 
 ## Indexes
 
@@ -76,7 +79,7 @@ erDiagram
 - Due outbox `(status, available_at)`.
 - Receipt lookup `(id_device, offline_uuid)` unique dan `(id_merchant, status, updated_at)`.
 - Transaction merchant timeline `(id_merchant, created_at DESC, id_transaction)`.
-- Payment exceptions `(id_merchant, status, updated_at)`.
+- Payment reconciliation exceptions `(id_merchant, status, updated_at)`.
 - Reporting `(id_merchant, sale_date)` dan `(id_merchant, id_product, sale_date)`.
 - Audit cursor `(id_merchant, created_at DESC, id_audit_event)`.
 

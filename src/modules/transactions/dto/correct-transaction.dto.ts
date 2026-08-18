@@ -3,7 +3,8 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsNotEmpty,
-  IsNumber,
+  IsInt,
+  IsOptional,
   IsPositive,
   IsString,
   MinLength,
@@ -17,17 +18,17 @@ export class CorrectItemDto {
   id_product: string;
 
   @ApiProperty({ example: 2, description: 'Jumlah unit produk' })
-  @IsNumber()
+  @IsInt()
   @IsPositive()
   quantity: number;
 
   @ApiProperty({ example: 15000, description: 'Harga per unit (dalam rupiah)' })
-  @IsNumber()
+  @IsInt()
   @IsPositive()
   unit_price: number;
 
   @ApiProperty({ example: 30000, description: 'Subtotal baris ini (quantity * unit_price)' })
-  @IsNumber()
+  @IsInt()
   @IsPositive()
   subtotal: number;
 }
@@ -53,17 +54,17 @@ export class CorrectTransactionDto {
   items: CorrectItemDto[];
 
   @ApiProperty({ example: 45000, description: 'Subtotal transaksi koreksi' })
-  @IsNumber()
+  @IsInt()
   @IsPositive()
   subtotal: number;
 
   @ApiProperty({ example: 45000, description: 'Total transaksi koreksi' })
-  @IsNumber()
+  @IsInt()
   @IsPositive()
   total: number;
 
   @ApiPropertyOptional({ example: 'Transfer BCA', description: 'Catatan tambahan koreksi' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   notes?: string;
 }

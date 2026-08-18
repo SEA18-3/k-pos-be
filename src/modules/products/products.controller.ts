@@ -33,9 +33,9 @@ import type { JwtPayload } from '../../common/decorators/current-user.decorator'
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  @Roles(Role.OWNER, Role.ENTRY)
+  @Roles(Role.ENTRY)
   @Post()
-  @ApiOperation({ summary: 'Menambahkan produk baru (OWNER, ENTRY)' })
+  @ApiOperation({ summary: 'Menambahkan produk baru (ENTRY)' })
   @UseInterceptors(
     FileInterceptor('image', {
       limits: { fileSize: 5 * 1024 * 1024 },
@@ -69,9 +69,9 @@ export class ProductsController {
     return this.productsService.findAll(user, query);
   }
 
-  @Roles(Role.OWNER, Role.ENTRY)
+  @Roles(Role.ENTRY)
   @Patch(':id')
-  @ApiOperation({ summary: 'Update detail produk (OWNER, ENTRY)' })
+  @ApiOperation({ summary: 'Update detail produk (ENTRY)' })
   @UseInterceptors(
     FileInterceptor('image', {
       limits: { fileSize: 5 * 1024 * 1024 },
@@ -99,21 +99,49 @@ export class ProductsController {
     return this.productsService.update(user, productId, updateProductDto, file);
   }
 
-  @Roles(Role.OWNER, Role.ENTRY)
+  @Roles(Role.ENTRY)
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft delete produk (OWNER, ENTRY)' })
+  @ApiOperation({ summary: 'Soft delete produk (ENTRY)' })
   remove(@CurrentUser() user: JwtPayload, @Param('id') productId: string) {
     return this.productsService.remove(user, productId);
   }
 
-  @Roles(Role.OWNER, Role.ENTRY)
+  @Roles(Role.ENTRY)
+  @Post(':id/archive')
+  archive(@CurrentUser() user: JwtPayload, @Param('id') productId: string) {
+    return this.productsService.archive(user, productId);
+  }
+
+  @Roles(Role.ENTRY)
+  @Post(':id/restore')
+  restore(@CurrentUser() user: JwtPayload, @Param('id') productId: string) {
+    return this.productsService.restore(user, productId);
+  }
+
+  @Roles(Role.ENTRY)
   @Post(':id/stock')
-  @ApiOperation({ summary: 'Penyesuaian stok manual / Opname (OWNER, ENTRY)' })
+  @ApiOperation({ summary: 'Penyesuaian stok manual / Opname (ENTRY)' })
   adjustStock(
     @CurrentUser() user: JwtPayload,
     @Param('id') productId: string,
     @Body() adjustStockDto: AdjustStockDto,
   ) {
     return this.productsService.adjustStock(user, productId, adjustStockDto);
+  }
+
+  @Roles(Role.ENTRY)
+  @Post(':id/stock-adjustments')
+  adjustStockCanonical(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') productId: string,
+    @Body() dto: AdjustStockDto,
+  ) {
+    return this.productsService.adjustStock(user, productId, dto);
+  }
+
+  @Roles(Role.OWNER, Role.ENTRY)
+  @Get(':id/stock-history')
+  stockHistory(@CurrentUser() user: JwtPayload, @Param('id') productId: string) {
+    return this.productsService.stockHistory(user, productId);
   }
 }

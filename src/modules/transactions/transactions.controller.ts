@@ -1,88 +1,78 @@
-import { Controller, Get, Patch, Post, Param, Body, UseGuards, Query } from '@nestjs/common';
-import { TransactionsService } from './transactions.service';
-import { QueryTransactionsDto } from './dto/query-transactions.dto';
-import { VoidTransactionDto } from './dto/void-transaction.dto';
-import { ResolveConflictDto } from './dto/resolve-conflict.dto';
-import { CorrectTransactionDto } from './dto/correct-transaction.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentUser, type JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { JwtPayload } from '../../common/decorators/current-user.decorator';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { CorrectTransactionDto } from './dto/correct-transaction.dto';
+import { QueryTransactionsDto } from './dto/query-transactions.dto';
+import { ResolveConflictDto } from './dto/resolve-conflict.dto';
+import { VoidTransactionDto } from './dto/void-transaction.dto';
+import { TransactionsService } from './transactions.service';
 
 @ApiTags('Transactions')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('transactions')
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(private readonly transactions: TransactionsService) {}
 
   @Get()
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
-  @ApiOperation({ summary: 'Get all transactions with filters and pagination' })
-  @ApiResponse({ status: 200, description: 'Return list of transactions.' })
+  @Roles(Role.OWNER, Role.ENTRY, Role.OPERATOR)
   findAll(@CurrentUser() user: JwtPayload, @Query() query: QueryTransactionsDto) {
-    return this.transactionsService.findAll(user, query);
+    return this.transactions.findAll(user, query);
   }
 
   @Get(':id')
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
-  @ApiOperation({ summary: 'Get a transaction by id' })
-  @ApiResponse({ status: 200, description: 'Return the transaction.' })
-  @ApiResponse({ status: 404, description: 'Transaction not found.' })
+  @Roles(Role.OWNER, Role.ENTRY, Role.OPERATOR)
   findOne(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
-    return this.transactionsService.findOne(user, id);
+    return this.transactions.findOne(user, id);
   }
 
-  @Patch(':id/void')
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
-  @ApiOperation({ summary: 'Void a PENDING transaction' })
-  @ApiResponse({ status: 200, description: 'Transaction successfully voided.' })
-  @ApiResponse({ status: 400, description: 'Invalid transaction status.' })
-  @ApiResponse({ status: 404, description: 'Transaction not found.' })
-  voidTransaction(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-    @Body() voidTransactionDto: VoidTransactionDto,
-  ) {
-    return this.transactionsService.voidTransaction(user, id, voidTransactionDto);
+  @Post(':id/void')
+  @Roles(Role.OWNER)
+  void(@CurrentUser() user: JwtPayload, @Param('id') id: string, @Body() dto: VoidTransactionDto) {
+    return this.transactions.voidTransaction(user, id, dto);
   }
 
-  @Post(':id/resolve')
-  @Roles(Role.OWNER, Role.ADMIN)
-  @ApiOperation({
-    summary: 'Resolve a SYNC_CONFLICT transaction manually (OWNER/ADMIN only)',
-    description:
-      'Gunakan action CONFIRM untuk memaksa konfirmasi transaksi (stok dipotong meski negatif). Gunakan VOID untuk membatalkan transaksi konflik.',
-  })
-  @ApiResponse({ status: 200, description: 'Conflict resolved successfully.' })
-  @ApiResponse({ status: 400, description: 'Transaction is not in SYNC_CONFLICT state.' })
-  @ApiResponse({ status: 404, description: 'Transaction not found.' })
+  @Post(':id/conflict-resolution')
+  @Roles(Role.OWNER)
   resolveConflict(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body() resolveConflictDto: ResolveConflictDto,
+    @Body() dto: ResolveConflictDto,
   ) {
-    return this.transactionsService.resolveConflict(user, id, resolveConflictDto);
+    return this.transactions.resolveConflict(user, id, dto);
+  }
+
+  @Post(':id/resolve')
+  @Roles(Role.OWNER)
+  resolveConflictCompatibility(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: ResolveConflictDto,
+  ) {
+    return this.transactions.resolveConflict(user, id, dto);
+  }
+
+  @Post(':id/corrections')
+  @Roles(Role.OWNER)
+  correct(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CorrectTransactionDto,
+  ) {
+    return this.transactions.correctTransaction(user, id, dto);
   }
 
   @Post(':id/correct')
-  @Roles(Role.OWNER, Role.ADMIN)
-  @ApiOperation({
-    summary: 'Correct a CONFIRMED transaction using Immutable Bridge pattern (OWNER/ADMIN only)',
-    description:
-      'Buat versi baru dari transaksi yang sudah CONFIRMED. Transaksi lama akan di-VOID (tidak dihapus). Stok lama direverted, stok baru dipotong. Catatan koreksi disimpan di TransactionCorrection.',
-  })
-  @ApiResponse({ status: 200, description: 'Transaction corrected. Returns TransactionCorrection record.' })
-  @ApiResponse({ status: 400, description: 'Only CONFIRMED transactions can be corrected.' })
-  @ApiResponse({ status: 404, description: 'Transaction not found.' })
-  correctTransaction(
+  @Roles(Role.OWNER)
+  correctCompatibility(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body() correctTransactionDto: CorrectTransactionDto,
+    @Body() dto: CorrectTransactionDto,
   ) {
-    return this.transactionsService.correctTransaction(user, id, correctTransactionDto);
+    return this.transactions.correctTransaction(user, id, dto);
   }
 }

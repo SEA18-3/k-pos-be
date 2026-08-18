@@ -1,190 +1,227 @@
-import { Controller, Logger } from '@nestjs/common';
-import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
-import { SyncTransactionDto } from './dto/sync-batch.dto';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Prisma, SyncReceiptStatus } from '../../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SyncStatus, TransactionStatus, PaymentStatus } from '../../../generated/prisma/client';
+import { SyncTransactionDto } from './dto/sync-batch.dto';
+import {
+  PermanentSyncError,
+  RetryableSyncError,
+  SyncMessageProcessor,
+  SyncProducerService,
+} from './sync-producer.service';
 
-interface RmqChannel {
-  ack(message: unknown): void;
-  nack(message: unknown, allUpTo?: boolean, requeue?: boolean): void;
-}
-
-interface InventoryData {
+type LockedInventory = {
+  id_product: string;
+  id_merchant: string;
   current_stock: number;
-  is_active: boolean;
-}
+};
 
-@Controller()
-export class SyncConsumerService {
-  private readonly logger = new Logger(SyncConsumerService.name);
+@Injectable()
+export class SyncConsumerService implements OnModuleInit, SyncMessageProcessor {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly producer: SyncProducerService,
+  ) {}
 
-  constructor(private readonly prisma: PrismaService) {}
+  onModuleInit(): void {
+    this.producer.registerProcessor(this);
+  }
 
-  @EventPattern('sync_transaction')
-  async handleSyncTransaction(@Payload() data: SyncTransactionDto, @Ctx() context: RmqContext) {
-    const channel = context.getChannelRef() as RmqChannel;
-    const originalMsg = context.getMessage() as unknown;
-
-    // Idempotency check: Does it already exist?
-    const existing = await this.prisma.transaction.findUnique({
-      where: {
-        id_device_offline_uuid: {
-          id_device: data.id_device,
-          offline_uuid: data.offline_uuid,
-        },
-      },
-    });
-
-    if (existing) {
-      this.logger.log(`Transaction ${data.offline_uuid} already exists. Skipping.`);
-      channel.ack(originalMsg);
-      return;
-    }
-
+  async process(receiptId: string): Promise<void> {
     try {
-      // Begin Database Transaction for processing
-      await this.prisma.$transaction(async (tx) => {
-        // We will do optimistic concurrency / row lock manually for products
-        let hasConflict = false;
+      await this.prisma.$transaction(
+        async (tx) => {
+          const receipt = await tx.syncReceipt.findUnique({ where: { id_receipt: receiptId } });
+          if (!receipt)
+            throw new PermanentSyncError('RECEIPT_NOT_FOUND', 'Sync receipt does not exist');
+          if (isTerminal(receipt.status)) return;
 
-        // Verify products and quantities
-        for (const item of data.items) {
-          // Use SELECT ... FOR UPDATE on Inventory to prevent race conditions during concurrent syncs
-          const inventoryData = await tx.$queryRaw<InventoryData[]>`
-            SELECT i.current_stock, p.is_active 
-            FROM "Inventory" i
-            JOIN "Product" p ON p.id_product = i.id_product
-            WHERE i.id_product = ${item.id_product} 
-            FOR UPDATE
-          `;
+          await tx.syncReceipt.update({
+            where: { id_receipt: receiptId },
+            data: {
+              status: 'PROCESSING',
+              processing_at: new Date(),
+              process_attempts: { increment: 1 },
+            },
+          });
 
-          if (!inventoryData || inventoryData.length === 0) {
-            hasConflict = true; // Product or inventory doesn't exist
-            break;
+          const payload = receipt.payload as unknown as SyncTransactionDto;
+          const productIds = [...new Set(payload.items.map((item) => item.id_product))];
+          const inventories = await tx.$queryRaw<LockedInventory[]>(Prisma.sql`
+          SELECT i.id_product, i.id_merchant, i.current_stock
+          FROM "Inventory" i
+          WHERE i.id_product IN (${Prisma.join(productIds)})
+          FOR UPDATE
+        `);
+          const inventoryByProduct = new Map(
+            inventories.map((inventory) => [inventory.id_product, inventory]),
+          );
+          const required = aggregateQuantities(payload);
+
+          for (const productId of productIds) {
+            const inventory = inventoryByProduct.get(productId);
+            if (!inventory || inventory.id_merchant !== receipt.id_merchant) {
+              throw new PermanentSyncError(
+                'PRODUCT_TENANT_MISMATCH',
+                'Product no longer belongs to this merchant',
+              );
+            }
           }
 
-          const inv = inventoryData[0];
-          if (!inv.is_active || inv.current_stock < item.quantity) {
-            hasConflict = true; // Stock insufficient or product inactive
-            break;
-          }
-        }
+          const hasShortage = [...required].some(
+            ([productId, quantity]) =>
+              (inventoryByProduct.get(productId)?.current_stock ?? -1) < quantity,
+          );
 
-        const finalStatus = hasConflict ? TransactionStatus.PENDING : TransactionStatus.CONFIRMED;
-        const finalSyncStatus = hasConflict ? SyncStatus.SYNC_CONFLICT : SyncStatus.SYNCED;
+          const transaction = await tx.transaction.create({
+            data: {
+              id_merchant: receipt.id_merchant,
+              id_user: receipt.id_operator,
+              id_device: receipt.id_device,
+              offline_uuid: receipt.offline_uuid,
+              payload_hash: receipt.payload_hash,
+              status: hasShortage ? 'PENDING' : 'CONFIRMED',
+              sync_status: hasShortage ? 'SYNC_CONFLICT' : 'SYNCED',
+              created_at_local: new Date(payload.created_at_local),
+              confirmed_at: hasShortage ? null : new Date(),
+              synced_at: new Date(),
+              subtotal: payload.subtotal,
+              total: payload.total,
+              notes: payload.notes,
+            },
+          });
 
-        // 1. Create Transaction Header
-        // In reality we should get id_user and id_merchant from device binding, but for now we trust the payload or look it up.
-        // Wait, the payload doesn't have id_user or id_merchant. We must find them via id_device!
-        const device = await tx.device.findUnique({
-          where: { id_device: data.id_device },
-          include: { merchant: true },
-        });
+          await tx.detailTransaction.createMany({
+            data: payload.items.map((item) => ({
+              id_transaction: transaction.id_transaction,
+              id_product: item.id_product,
+              product_name: item.product_name,
+              product_sku: item.product_sku,
+              catalog_version: item.catalog_version,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              subtotal: item.subtotal,
+            })),
+          });
+          await tx.payment.create({
+            data: {
+              id_transaction: transaction.id_transaction,
+              id_merchant: receipt.id_merchant,
+              amount: payload.payment.amount,
+              method: payload.payment.method,
+              status: 'VERIFIED',
+              cash_received: payload.payment.cash_received,
+              change_amount: payload.payment.change_amount,
+              qris_code: payload.payment.qris_code,
+              transfer_ref: payload.payment.transfer_ref,
+              verified_at: new Date(),
+              verified_by: receipt.id_operator,
+              verification_note: 'Verified by Operator before local confirmation',
+            },
+          });
 
-        if (!device) {
-          throw new Error(`Device ${data.id_device} not found. Cannot process transaction.`);
-        }
-
-        const newTx = await tx.transaction.create({
-          data: {
-            id_merchant: device.id_merchant,
-            id_user: device.id_user,
-            id_device: data.id_device,
-            offline_uuid: data.offline_uuid,
-            subtotal: data.subtotal,
-            total: data.total,
-            created_at_local: new Date(data.created_at_local),
-            notes: data.notes,
-            status: finalStatus,
-            sync_status: finalSyncStatus,
-            synced_at: new Date(),
-            confirmed_at: hasConflict ? null : new Date(),
-          },
-        });
-
-        // 2. Create Details
-        await tx.detailTransaction.createMany({
-          data: data.items.map((item) => ({
-            id_transaction: newTx.id_transaction,
-            id_product: item.id_product,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            subtotal: item.subtotal,
-          })),
-        });
-
-        // 3. Create Payment
-        // CASH: langsung VERIFIED karena tidak perlu rekonsiliasi manual.
-        // STATIC_QRIS / BANK_TRANSFER: PENDING, menunggu verifikasi oleh OWNER.
-        const paymentStatus =
-          data.payment.method === 'CASH'
-            ? PaymentStatus.VERIFIED
-            : PaymentStatus.PENDING;
-
-        await tx.payment.create({
-          data: {
-            id_transaction: newTx.id_transaction,
-            id_merchant: device.id_merchant,
-            amount: data.payment.amount,
-            method: data.payment.method,
-            cash_received: data.payment.cash_received,
-            change_amount: data.payment.change_amount,
-            qris_code: data.payment.qris_code,
-            transfer_ref: data.payment.transfer_ref,
-            status: paymentStatus,
-            // Jika CASH, set verified_at otomatis pada saat sync
-            verified_at: paymentStatus === PaymentStatus.VERIFIED ? new Date() : null,
-          },
-        });
-
-        // 4. Update Inventory if NOT conflict
-        if (!hasConflict) {
-          for (const item of data.items) {
-            await tx.inventory.update({
-              where: { id_product: item.id_product },
+          if (!hasShortage) {
+            for (const [productId, quantity] of required) {
+              await tx.inventory.update({
+                where: { id_product: productId },
+                data: { current_stock: { decrement: quantity } },
+              });
+              await tx.stockHistory.create({
+                data: {
+                  idempotency_key: `sale:${transaction.id_transaction}:${productId}`,
+                  id_product: productId,
+                  id_merchant: receipt.id_merchant,
+                  id_user: receipt.id_operator,
+                  id_transaction: transaction.id_transaction,
+                  movement_type: 'SALE',
+                  quantity: -quantity,
+                  notes: `Offline settlement from device ${receipt.id_device}`,
+                },
+              });
+            }
+            await tx.backendOutbox.create({
               data: {
-                current_stock: { decrement: item.quantity },
+                idempotency_key: `reporting:sale:${transaction.id_transaction}`,
+                id_merchant: receipt.id_merchant,
+                id_transaction: transaction.id_transaction,
+                event_type: 'REPORTING_SALE',
+                payload: reportingPayload(payload, transaction.id_transaction),
               },
             });
-
-            // Log stock history
-            await tx.stockHistory.create({
-              data: {
-                id_product: item.id_product,
-                id_merchant: device.id_merchant,
-                id_transaction: newTx.id_transaction,
-                movement_type: 'SALE',
-                quantity: -item.quantity,
-                notes: `Sold via offline sync (device: ${data.id_device})`,
-              },
-            });
           }
-        }
-      });
 
-      // Acknowledge the message to remove it from the queue
-      this.logger.log(`Processed transaction ${data.offline_uuid} successfully.`);
-      channel.ack(originalMsg);
-    } catch (err: unknown) {
-      const error = err as Error;
-      this.logger.error(`Error processing transaction ${data.offline_uuid}`, error.stack);
-
-      // Reject and Requeue for transient errors.
-      // In a real setup, we should check if the error is a transient DB error (e.g. timeout) vs malformed data.
-      // If we reject without requeue (false), it will go to DLQ.
-      // Let's implement a basic retry mechanism based on x-delivery-count if RabbitMQ quorum queues are used,
-      // or we can just nack with requeue=false if we want it to go straight to DLX for now.
-
-      // Check if it's a structural error that will never succeed
-      if (error.message.includes('not found')) {
-        channel.nack(originalMsg, false, false); // don't requeue, send to DLQ
-      } else {
-        // Transient error, requeue
-        // WARNING: Simple nack with requeue=true can cause an infinite loop if not handled with TTL/headers.
-        // For production, we'd use a retry queue with TTL. Here we nack and send to DLX if it fails too many times.
-        // We will assume RabbitMQ is configured with a dead-letter-exchange for this queue.
-        channel.nack(originalMsg, false, false);
-      }
+          await tx.syncReceipt.update({
+            where: { id_receipt: receiptId },
+            data: {
+              id_transaction: transaction.id_transaction,
+              status: hasShortage ? 'CONFLICT' : 'SYNCED',
+              terminal_at: new Date(),
+              last_error_code: hasShortage ? 'INSUFFICIENT_STOCK' : null,
+              last_error_message: hasShortage ? 'Owner action is required' : null,
+            },
+          });
+          await tx.device.update({
+            where: { id_device: receipt.id_device },
+            data: { last_sync_at: new Date() },
+          });
+        },
+        { timeout: Number(process.env.SYNC_TRANSACTION_TIMEOUT_MS ?? 10_000) },
+      );
+    } catch (error: unknown) {
+      if (error instanceof PermanentSyncError || error instanceof RetryableSyncError) throw error;
+      throw new RetryableSyncError(
+        'DATABASE_SETTLEMENT_FAILED',
+        error instanceof Error ? error.message : 'Settlement failed',
+      );
     }
   }
+
+  async markFailed(
+    receiptId: string,
+    code: string,
+    message: string,
+    retryable: boolean,
+  ): Promise<void> {
+    await this.prisma.syncReceipt.updateMany({
+      where: { id_receipt: receiptId, status: { in: ['QUEUED', 'PROCESSING'] } },
+      data: {
+        status: 'FAILED',
+        terminal_at: new Date(),
+        last_error_code: code,
+        last_error_message: message.slice(0, 500),
+        retryable,
+      },
+    });
+  }
+}
+
+function isTerminal(status: SyncReceiptStatus): boolean {
+  return status === 'SYNCED' || status === 'CONFLICT' || status === 'FAILED';
+}
+
+function aggregateQuantities(payload: SyncTransactionDto): Map<string, number> {
+  const quantities = new Map<string, number>();
+  for (const item of payload.items) {
+    quantities.set(item.id_product, (quantities.get(item.id_product) ?? 0) + item.quantity);
+  }
+  return quantities;
+}
+
+function reportingPayload(
+  payload: SyncTransactionDto,
+  transactionId: string,
+): Prisma.InputJsonObject {
+  return {
+    transaction_id: transactionId,
+    occurred_at: payload.created_at_local,
+    gross_delta: payload.total,
+    net_delta: payload.total,
+    count_delta: 1,
+    items: payload.items.map((item) => ({
+      id_product: item.id_product,
+      product_name: item.product_name,
+      quantity_delta: item.quantity,
+      gross_delta: item.subtotal,
+      net_delta: item.subtotal,
+    })),
+  };
 }

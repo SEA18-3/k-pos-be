@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class VoidTransactionDto {
   @ApiProperty({
@@ -11,4 +11,8 @@ export class VoidTransactionDto {
   @IsString()
   @MinLength(5)
   void_reason: string;
+
+  @IsOptional()
+  @IsBoolean()
+  inventory_returned?: boolean;
 }

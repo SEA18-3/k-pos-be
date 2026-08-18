@@ -5,11 +5,11 @@
 
 ## Context
 
-Dokumen lama mencampur `ADMIN`, `OWNER`, `ENTRY`, dan `OPERATOR`, sementara kebutuhan produk memiliki tiga access pattern nyata.
+Dokumen lama mencampur empat role, sementara kebutuhan produk hanya memiliki tiga access pattern nyata.
 
 ## Decision
 
-Role canonical hanya `OWNER | ENTRY | OPERATOR`. Owner memegang capability administration; `ADMIN` bukan role. Operator, Entry, dan Owner memakai PWA terpisah pada `/`, `/entry/`, dan `/owner/`. Satu merchant memiliki tepat satu active primary Owner. Owner hanya membuat Entry/Operator melalui API.
+Role canonical hanya `OWNER | ENTRY | OPERATOR`. Owner memegang capability administration. Operator, Entry, dan Owner memakai PWA terpisah pada `/`, `/entry/`, dan `/owner/`. Satu merchant memiliki tepat satu active primary Owner. Owner hanya membuat Entry/Operator melalui API.
 
 ## Consequences
 

@@ -58,6 +58,6 @@ export class DevicesController {
   @Roles(Role.OWNER)
   remove(@Request() req: { user: JwtPayload }, @Param('id') id: string) {
     const id_merchant = req.user.id_merchant;
-    return this.devicesService.remove(id, id_merchant);
+    return this.devicesService.remove(id, id_merchant, req.user.sub);
   }
 }

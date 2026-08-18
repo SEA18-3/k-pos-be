@@ -11,7 +11,7 @@ Backend dan frontend berada di repository terpisah. Handwritten duplicate contra
 
 Backend generated `openapi.json` menjadi normative contract. Frontend pins exact spec/backend commit, generates client/types, lalu memakai explicit snake_case-wire ke camelCase-domain mapper. CI memeriksa generation drift.
 
-Schema dibangun ulang sebagai clean baseline pada local/isolated environment. Tidak ada migration data dari prototype Fastify/COMPOS. Reset command wajib guarded terhadap database name/environment.
+Schema dibangun ulang sebagai clean baseline pada local/isolated environment. Tidak ada migration data dari prototype API lama. Reset command wajib guarded terhadap database name/environment.
 
 ## Consequences
 

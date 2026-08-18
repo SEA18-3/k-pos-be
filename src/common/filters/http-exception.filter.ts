@@ -1,5 +1,6 @@
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { randomUUID } from 'node:crypto';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -19,22 +20,35 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const exceptionResponse = exception instanceof HttpException ? exception.getResponse() : null;
 
     let message: string | string[] = 'Internal server error';
+    let code = 'INTERNAL_ERROR';
+    let details: unknown;
     if (exceptionResponse) {
       if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
       } else if (typeof exceptionResponse === 'object' && 'message' in exceptionResponse) {
-        message = (exceptionResponse as Record<string, unknown>).message as string | string[];
+        const errorBody = exceptionResponse as Record<string, unknown>;
+        message = errorBody.message as string | string[];
+        if (typeof errorBody.code === 'string') code = errorBody.code;
+        details = errorBody.details;
       }
     }
+
+    if (code === 'INTERNAL_ERROR' && exception instanceof HttpException) {
+      code = exception.name
+        .replace(/Exception$/, '')
+        .replace(/([a-z])([A-Z])/g, '$1_$2')
+        .toUpperCase();
+    }
+
+    const requestId = request.headers['x-request-id']?.toString() ?? randomUUID();
 
     response.status(status).json({
       status: 'error',
       message,
-      data: null,
-      error_details: {
-        statusCode: status,
-        path: request.url,
-        timestamp: new Date().toISOString(),
+      error: {
+        code,
+        ...(details === undefined ? {} : { details }),
+        request_id: requestId,
       },
     });
   }

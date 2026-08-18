@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseStorageService } from '../../storage/supabase-storage.service';
 import { MulterFile } from '../../common/types/multer-file';
 import type { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { randomUUID } from 'node:crypto';
 
 @Injectable()
 export class ProductsService {
@@ -39,7 +40,6 @@ export class ProductsService {
               create: {
                 id_merchant: user.id_merchant,
                 current_stock: 0,
-                reserved: 0,
               },
             },
           },
@@ -156,6 +156,7 @@ export class ProductsService {
           ...(dto.price !== undefined && { price: dto.price }),
           ...(dto.is_active !== undefined && { is_active: dto.is_active }),
           ...(imageUrl !== undefined && { image_url: imageUrl }),
+          catalog_version: { increment: 1 },
         },
       });
       return updatedProduct;
@@ -167,7 +168,7 @@ export class ProductsService {
     }
   }
 
-  async remove(user: JwtPayload, productId: string) {
+  async archive(user: JwtPayload, productId: string) {
     const product = await this.prisma.product.findFirst({
       where: {
         id_product: productId,
@@ -181,8 +182,23 @@ export class ProductsService {
 
     return this.prisma.product.update({
       where: { id_product: productId },
-      data: { is_active: false },
+      data: { is_active: false, archived_at: new Date(), catalog_version: { increment: 1 } },
     });
+  }
+
+  async restore(user: JwtPayload, productId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id_product: productId, id_merchant: user.id_merchant },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    return this.prisma.product.update({
+      where: { id_product: productId },
+      data: { is_active: true, archived_at: null, catalog_version: { increment: 1 } },
+    });
+  }
+
+  remove(user: JwtPayload, productId: string) {
+    return this.archive(user, productId);
   }
 
   async adjustStock(user: JwtPayload, productId: string, dto: AdjustStockDto) {
@@ -220,6 +236,7 @@ export class ProductsService {
 
       const stockHistory = await tx.stockHistory.create({
         data: {
+          idempotency_key: `adjustment:${randomUUID()}`,
           id_product: product.id_product,
           id_merchant: user.id_merchant,
           id_user: user.sub,
@@ -238,5 +255,18 @@ export class ProductsService {
       current_stock: result.updatedInventory.current_stock,
       stock_history: result.stockHistory,
     };
+  }
+
+  async stockHistory(user: JwtPayload, productId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id_product: productId, id_merchant: user.id_merchant },
+      select: { id_product: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    return this.prisma.stockHistory.findMany({
+      where: { id_product: productId, id_merchant: user.id_merchant },
+      orderBy: { date: 'desc' },
+      take: 100,
+    });
   }
 }

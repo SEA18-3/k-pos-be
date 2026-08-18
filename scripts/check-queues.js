@@ -8,15 +8,15 @@ async function run() {
     console.log('Checking queue sync.transactions...');
     const result = await ch.checkQueue('sync.transactions');
     console.log(result);
-    
+
     console.log('Checking queue sync.dlq...');
     try {
       const result2 = await ch.checkQueue('sync.dlq');
       console.log(result2);
-    } catch(e) {
+    } catch (e) {
       console.log('sync.dlq not found');
     }
-    
+
     await ch.close();
     await conn.close();
   } catch (err) {

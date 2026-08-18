@@ -1,61 +1,64 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { SyncBatchDto } from './dto/sync-batch.dto';
-import { SyncProducerService } from './sync-producer.service';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { CurrentUser, type JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Role } from '../../common/enums/role.enum';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { SyncBatchDto } from './dto/sync-batch.dto';
+import { SyncService } from './sync.service';
 
-@ApiTags('sync')
+@ApiTags('Sync')
+@ApiBearerAuth()
 @Controller('sync')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@ApiBearerAuth()
 export class SyncController {
-  constructor(private readonly syncProducerService: SyncProducerService) {}
+  constructor(private readonly sync: SyncService) {}
 
   @Post()
   @HttpCode(HttpStatus.OK)
-  @Roles('OPERATOR')
+  @Roles(Role.OPERATOR)
   @ApiOperation({
-    summary: 'Submit a batch of offline transactions for synchronization',
-    description: `Endpoint inti untuk arsitektur Offline-First. 
-Menerima batch transaksi dari perangkat Kasir dan mem-publish-nya ke RabbitMQ secara asinkron (latency < 50ms).
-**Catatan Penting:** 
-- Endpoint ini selalu mengembalikan 200 OK jika payload valid, namun tidak menjamin transaksi sukses disimpan ke database.
-- Gagal Teknis (DLQ) tidak akan masuk database.
-- Konflik Bisnis (SYNC_CONFLICT) akan masuk database dan dapat dicek via \`GET /transactions\`.`,
+    summary: 'Durably queue an offline transaction batch; 200 does not mean settled',
   })
-  @ApiBody({ type: SyncBatchDto })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Batch received and queued for processing in RabbitMQ',
-    schema: {
-      example: {
-        message: 'Batch diterima dan sedang diproses',
-        data: {
-          accepted: 1,
-          queued_at: '2026-08-16T10:05:00.000Z',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Validation Error (e.g., malformed UUID, missing fields)',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid or expired JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - User role is not OPERATOR' })
-  async syncTransactions(@Body() batch: SyncBatchDto) {
-    // 1. Publish to RabbitMQ
-    await this.syncProducerService.publishBatch(batch.transactions);
+  accept(
+    @CurrentUser() user: JwtPayload,
+    @Headers('x-device-id') deviceId: string | undefined,
+    @Body() batch: SyncBatchDto,
+  ) {
+    return this.sync.accept(user, deviceId, batch);
+  }
 
-    // 2. Return HTTP 200 immediately
-    return {
-      message: 'Batch diterima dan sedang diproses',
-      data: {
-        accepted: batch.transactions.length,
-        queued_at: new Date().toISOString(),
-      },
-    };
+  @Get('receipts')
+  @Roles(Role.OPERATOR, Role.OWNER)
+  getReceipts(
+    @CurrentUser() user: JwtPayload,
+    @Query('offline_uuid') query: string | string[] | undefined,
+  ) {
+    return this.sync.getReceipts(user, query ? (Array.isArray(query) ? query : [query]) : []);
+  }
+
+  @Get('failures')
+  @Roles(Role.OWNER)
+  @ApiOperation({ summary: 'List terminal sync failures and stock conflicts for Owner action' })
+  getFailures(@CurrentUser() user: JwtPayload) {
+    return this.sync.getFailures(user);
+  }
+
+  @Post('receipts/:id/retry')
+  @Roles(Role.OWNER)
+  retry(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.sync.retry(user, id);
   }
 }

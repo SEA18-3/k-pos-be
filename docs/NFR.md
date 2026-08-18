@@ -16,9 +16,10 @@ Target berikut berlaku pada supported test environment yang metadata-nya disimpa
 ## Scale profile
 
 - CI smoke: 50 merchant selama 15–30 detik dengan sync writer, Entry mutation, Owner reader, dan reconciliation activity.
-- Capacity profile: 500 merchant selama lima menit melalui command eksplisit, bukan setiap PR.
+- Capacity profile: 500 merchant selama lima menit, satu sale per counter per 30 detik (steady-state 16,67 sale/detik), melalui command eksplisit dan bukan setiap PR.
 - Connection pool, Rabbit prefetch, batch limit, concurrency, dan retry delay harus configurable dan dicatat dalam benchmark artifact.
 - Reporting query dan worker backlog tidak boleh menghabiskan operational connection budget.
+- Supported single-process profile memakai pool 32 koneksi, Rabbit prefetch 8, dan reporting concurrency 4. Artinya background work memakai maksimal 12 koneksi secara bersamaan dan menyisakan 20 untuk HTTP/control path. Setiap replica tambahan membutuhkan budget pool terpisah terhadap `max_connections` PostgreSQL.
 
 ## Availability dan resilience
 

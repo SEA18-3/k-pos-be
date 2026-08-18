@@ -2,7 +2,7 @@
 
 K-POS adalah platform point-of-sale multi-tenant untuk merchant yang harus tetap berjualan saat internet tidak stabil. Produk dibagi menjadi tiga PWA sesuai access pattern, tetapi memakai satu backend modular, satu PostgreSQL, dan RabbitMQ untuk settlement asynchronous.
 
-> Status dokumen: **canonical target contract**. Branch `develop` belum tentu mengimplementasikan seluruh behavior di dokumen ini. Progress nyata dicatat di [implementation plan](implementation_plan.md).
+> Status dokumen: **canonical implemented contract** pada branch integration. Bukti dan gate tersisa dicatat di [implementation plan](implementation_plan.md).
 
 ## Product promise
 
@@ -25,8 +25,9 @@ Hanya ada tiga role tersebut. Istilah “admin” berarti capability milik `OWNE
 3. **Queued bukan settled.** HTTP `200` dari sync hanya berarti durable receipt diterima untuk dipublish; client polling sampai `SYNCED`, `CONFLICT`, atau `FAILED`.
 4. **Ledger append-only.** Confirmed transaction tidak diedit. Void/correction membuat record baru dan API menghitung effective status.
 5. **Inventory eventual.** Stock diterapkan worker setelah settlement; tidak ada cross-device stock reservation.
-6. **Tenant identity server-owned.** Merchant, user, dan device diambil dari authenticated session dan verified device binding, bukan dipercaya dari request body.
-7. **Operational path tetap terlindungi.** Reporting, reconciliation, dan Rabbit outage tidak boleh menghentikan login/catalog read yang masih sehat; sync menolak sementara dengan retryable `503` bila durable publish belum tersedia.
+6. **Payment reconciliation is exceptional.** Payment yang sudah dicek Operator langsung `VERIFIED`; reconciliation record hanya dibuat bila masalah ditemukan kemudian.
+7. **Tenant identity server-owned.** Merchant, user, dan device diambil dari authenticated session dan verified device binding, bukan dipercaya dari request body.
+8. **Operational path tetap terlindungi.** Reporting, reconciliation, dan Rabbit outage tidak boleh menghentikan login/catalog read yang masih sehat; sync menolak sementara dengan retryable `503` bila durable publish belum tersedia.
 
 ## Canonical lifecycle
 
@@ -58,7 +59,7 @@ State di atas adalah **local delivery state**. Canonical ledger memakai original
 - `k-pos-be`: canonical backend, migrations, Rabbit consumers, generated OpenAPI.
 - frontend repository: tiga PWA, pinned OpenAPI snapshot, generated client, IndexedDB sync engine.
 
-Urutan perubahan lintas repo adalah backend contract → generated OpenAPI → pinned frontend client → cross-repo E2E. Fastify prototype lama bukan backend alternatif dan dihapus setelah NestJS mencapai parity.
+Urutan perubahan lintas repo adalah backend contract → generated OpenAPI → pinned frontend client → cross-repo E2E. Prototype API frontend lama sudah dihapus setelah NestJS mencapai parity.
 
 ## Scope release ini
 

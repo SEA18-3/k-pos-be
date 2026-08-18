@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 1. PostgreSQL Database
   postgres:
@@ -14,6 +12,11 @@ services:
     volumes:
       - kpos-pg-data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d kpos_db']
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   # 2. RabbitMQ Message Broker (dengan Management Plugin)
   rabbitmq:
@@ -27,6 +30,38 @@ services:
       - '15672:15672' # Management UI port (http://localhost:15672)
     volumes:
       - kpos-rmq-data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    profiles: ['app']
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      API_PREFIX: /api/v1
+      CORS_ORIGINS: http://localhost:5173,http://localhost:5174,http://localhost:5175
+      DATABASE_URL: postgresql://postgres:kpos-secret@postgres:5432/kpos_db?schema=public
+      DIRECT_URL: postgresql://postgres:kpos-secret@postgres:5432/kpos_db?schema=public
+      DATABASE_SSL: 'false'
+      DATABASE_POOL_MAX: 32
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_PREFETCH: 8
+      REPORTING_BATCH_SIZE: 100
+      REPORTING_CONCURRENCY: 4
+      JWT_SECRET: local-docker-jwt-secret-change-outside-demo
+      OFFLINE_LEASE_SECRET: local-docker-offline-secret-change-outside-demo
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

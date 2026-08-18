@@ -1,195 +1,94 @@
 import { PrismaClient, UserRole } from '../generated/prisma/client';
-import * as bcrypt from 'bcrypt';
-import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as bcrypt from 'bcrypt';
+import { createHash } from 'node:crypto';
+import { Pool } from 'pg';
 import 'dotenv/config';
 
 const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+if (!connectionString) throw new Error('DATABASE_URL or DIRECT_URL is required');
 const pool = new Pool({
   connectionString,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
 });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+
+const products = [
+  ['KSA-01', 'Kopi Susu Aren', 22000],
+  ['CS-01', 'Choco Sea Salt', 24000],
+  ['MC-01', 'Matcha Cloud', 25000],
+  ['YS-01', 'Yuzu Sparkling', 23000],
+  ['AC-01', 'Aren Croffle', 26000],
+  ['CL-01', 'Caramel Latte', 25000],
+  ['IA-01', 'Iced Americano', 18000],
+  ['NAM-01', 'Nasi Ayam Matah', 32000],
+] as const;
 
 async function main() {
-  console.log('Seeding database...');
-
-  // 1. Create a Merchant
   const merchant = await prisma.merchant.upsert({
-    where: { id_merchant: 'M-1' },
-    update: {},
-    create: {
-      id_merchant: 'M-1',
-      name: 'K-POS Branch 1',
-      address: 'Jalan Kenangan No. 1',
-      phone: '081234567890',
-    },
+    where: { id_merchant: 'KEDAI-NUSA' },
+    update: { name: 'Kedai Nusa', timezone: 'Asia/Jakarta', is_active: true },
+    create: { id_merchant: 'KEDAI-NUSA', name: 'Kedai Nusa', timezone: 'Asia/Jakarta' },
   });
 
-  console.log('Created Merchant:', merchant.name);
+  const credentials = [
+    ['KPOS-OWNER', 'Nadia Owner', 'owner@kedai-nusa.test', 'owner123', UserRole.OWNER],
+    ['KPOS-ENTRY', 'Dimas Entry', 'entry@kedai-nusa.test', 'entry123', UserRole.ENTRY],
+    [
+      'KPOS-OPERATOR',
+      'Rani Operator',
+      'operator@kedai-nusa.test',
+      'operator123',
+      UserRole.OPERATOR,
+    ],
+  ] as const;
+  for (const [id_user, full_name, email, rawPassword, role] of credentials) {
+    const password = await bcrypt.hash(rawPassword, 12);
+    await prisma.user.upsert({
+      where: { email },
+      update: { full_name, password, role, is_active: true },
+      create: { id_user, id_merchant: merchant.id_merchant, full_name, email, password, role },
+    });
+  }
 
-  // 2. Create Users
-  const passwordHash = await bcrypt.hash('password123', 10);
-
-  await prisma.user.upsert({
-    where: { email: 'admin@kpos.com' },
-    update: {},
+  await prisma.device.upsert({
+    where: { id_device: 'KPOS-DEMO-DEVICE' },
+    update: { name: 'Counter Demo', status: 'PAIRED', is_active: true },
     create: {
-      email: 'admin@kpos.com',
-      full_name: 'Super Admin',
-      password: passwordHash,
-      role: UserRole.ADMIN,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'owner@kpos.com' },
-    update: {},
-    create: {
-      email: 'owner@kpos.com',
-      full_name: 'Merchant Owner',
-      password: passwordHash,
-      role: UserRole.OWNER,
+      id_device: 'KPOS-DEMO-DEVICE',
       id_merchant: merchant.id_merchant,
+      name: 'Counter Demo',
+      status: 'PAIRED',
+      device_id_hash: createHash('sha256').update('KPOS-DEMO-HARDWARE').digest('hex'),
     },
   });
 
-  const kasir = await prisma.user.upsert({
-    where: { email: 'kasir@kpos.com' },
-    update: {},
-    create: {
-      email: 'kasir@kpos.com',
-      full_name: 'Kasir Satu',
-      password: passwordHash,
-      role: UserRole.OPERATOR,
-      id_merchant: merchant.id_merchant,
-    },
-  });
-
-  console.log('Created Users: Admin, Owner, Kasir');
-
-  // 3. Create Products and Inventory
-  const productA = await prisma.product.upsert({
-    where: { id_merchant_sku: { id_merchant: merchant.id_merchant, sku: 'SKU-001' } },
-    update: {},
-    create: {
-      id_merchant: merchant.id_merchant,
-      name: 'Indomie Goreng',
-      sku: 'SKU-001',
-      price: 3500,
-      inventory: {
-        create: {
-          id_merchant: merchant.id_merchant,
-          current_stock: 100,
-        },
+  for (const [sku, name, price] of products) {
+    await prisma.product.upsert({
+      where: { id_merchant_sku: { id_merchant: merchant.id_merchant, sku } },
+      update: { name, price, is_active: true, archived_at: null },
+      create: {
+        id_merchant: merchant.id_merchant,
+        sku,
+        name,
+        price,
+        inventory: { create: { id_merchant: merchant.id_merchant, current_stock: 100 } },
       },
-    },
-  });
+    });
+  }
 
-  const productB = await prisma.product.upsert({
-    where: { id_merchant_sku: { id_merchant: merchant.id_merchant, sku: 'SKU-002' } },
-    update: {},
-    create: {
-      id_merchant: merchant.id_merchant,
-      name: 'Es Teh Manis',
-      sku: 'SKU-002',
-      price: 5000,
-      inventory: {
-        create: {
-          id_merchant: merchant.id_merchant,
-          current_stock: 50,
-        },
-      },
-    },
-  });
-
-  console.log('Created Products:', productA.name, productB.name);
-
-  // 4. Create Dummy Transactions for testing Tahap 5
-  const device = await prisma.device.upsert({
-    where: { id_device: 'DEV-1' },
-    update: {},
-    create: {
-      id_device: 'DEV-1',
-      id_merchant: merchant.id_merchant,
-      id_user: kasir.id_user,
-      name: 'Tablet Kasir Depan',
-    }
-  });
-
-  await prisma.transaction.upsert({
-    where: { id_transaction: 'TRX-PENDING-1' },
-    update: {},
-    create: {
-      id_transaction: 'TRX-PENDING-1',
-      id_merchant: merchant.id_merchant,
-      id_user: kasir.id_user,
-      id_device: device.id_device,
-      offline_uuid: 'offline-uuid-pending-1',
-      status: 'PENDING',
-      sync_status: 'PENDING_SYNC',
-      subtotal: 3500,
-      total: 3500,
-      details: {
-        create: {
-          id_detail: 'DET-1',
-          id_product: productA.id_product,
-          quantity: 1,
-          unit_price: 3500,
-          subtotal: 3500,
-        }
-      }
-    }
-  });
-
-  await prisma.transaction.upsert({
-    where: { id_transaction: 'TRX-CONFIRMED-1' },
-    update: {},
-    create: {
-      id_transaction: 'TRX-CONFIRMED-1',
-      id_merchant: merchant.id_merchant,
-      id_user: kasir.id_user,
-      id_device: device.id_device,
-      offline_uuid: 'offline-uuid-confirmed-1',
-      status: 'CONFIRMED',
-      sync_status: 'SYNCED',
-      subtotal: 8500,
-      total: 8500,
-      details: {
-        create: [
-          {
-            id_detail: 'DET-2',
-            id_product: productA.id_product,
-            quantity: 1,
-            unit_price: 3500,
-            subtotal: 3500,
-          },
-          {
-            id_detail: 'DET-3',
-            id_product: productB.id_product,
-            quantity: 1,
-            unit_price: 5000,
-            subtotal: 5000,
-          }
-        ]
-      }
-    }
-  });
-
-  console.log('Created Dummy Transactions (TRX-PENDING-1 and TRX-CONFIRMED-1)');
-  console.log('Database seeding completed!');
+  console.log('K-POS demo seed ready');
+  console.log('OWNER    owner@kedai-nusa.test / owner123');
+  console.log('ENTRY    entry@kedai-nusa.test / entry123');
+  console.log('OPERATOR operator@kedai-nusa.test / operator123 / KPOS-DEMO-DEVICE');
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exitCode = 1;
-  })
   .finally(async () => {
-    try {
-      await prisma.$disconnect();
-    } finally {
-      await pool.end();
-    }
+    await prisma.$disconnect();
+    await pool.end();
+  })
+  .catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
   });

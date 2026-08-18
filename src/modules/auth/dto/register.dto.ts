@@ -1,5 +1,5 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
   @ApiProperty({ example: 'Budi Santoso' })
@@ -21,4 +21,9 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   merchant_name: string;
+
+  @ApiPropertyOptional({ example: 'Asia/Jakarta', default: 'Asia/Jakarta' })
+  @IsOptional()
+  @IsString()
+  timezone?: string;
 }

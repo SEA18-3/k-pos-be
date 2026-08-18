@@ -66,10 +66,10 @@ Lost response aman: Operator mengirim ulang exact batch; backend reuse receipt b
 
 ## 6. Payment exception
 
-- Cash settled sebagai `VERIFIED`.
-- Static QRIS dan transfer mulai sebagai `PENDING` sampai diperiksa Owner.
-- Owner memilih `CONFIRM` untuk menjadikannya `RECONCILED`, atau `REJECT` untuk menjadikannya `FAILED`, beserta reason.
-- Payment `FAILED` yang perlu membatalkan efek sale dilanjutkan melalui append-only void/correction, bukan edit transaction history.
+- Operator memeriksa Cash, Static QRIS, atau transfer sebelum confirm; payment langsung `VERIFIED` dan sale selesai.
+- Bila masalah ditemukan belakangan, Owner membuka reconciliation case `OPEN` dengan reason/evidence note.
+- Owner memilih `VALID` untuk `RESOLVED_VALID` dan payment tetap `VERIFIED`.
+- Owner memilih `INVALID` untuk `RESOLVED_INVALID`; backend mengubah payment menjadi `FAILED` sekaligus membuat append-only void/correction. Transaction asli tidak diedit.
 
 ## 7. Confirmed sale correction
 

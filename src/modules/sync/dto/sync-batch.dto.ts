@@ -4,10 +4,10 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
-  IsNumber,
+  IsISO8601,
   IsOptional,
   IsString,
-  IsUUID,
+  Matches,
   Min,
   ValidateNested,
   ArrayMaxSize,
@@ -22,19 +22,19 @@ export class SyncPaymentDto {
   method: PaymentMethod;
 
   @ApiProperty({ example: 30000, description: 'Total amount to be paid' })
-  @IsNumber()
+  @IsInt()
   @Min(0)
   amount: number;
 
   @ApiPropertyOptional({ example: 50000, description: 'Amount of cash received from customer' })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(0)
   cash_received?: number;
 
   @ApiPropertyOptional({ example: 20000, description: 'Change amount given to customer' })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(0)
   change_amount?: number;
 
@@ -58,18 +58,33 @@ export class SyncItemDto {
   @IsNotEmpty()
   id_product: string;
 
+  @ApiProperty({ example: 'Kopi Susu Aren' })
+  @IsString()
+  @IsNotEmpty()
+  product_name: string;
+
+  @ApiProperty({ example: 'KSA-01' })
+  @IsString()
+  @IsNotEmpty()
+  product_sku: string;
+
+  @ApiProperty({ example: 7 })
+  @IsInt()
+  @Min(1)
+  catalog_version: number;
+
   @ApiProperty({ example: 2, description: 'Quantity purchased' })
   @IsInt()
   @Min(1)
   quantity: number;
 
   @ApiProperty({ example: 15000, description: 'Price per unit at the time of transaction' })
-  @IsNumber()
+  @IsInt()
   @Min(0)
   unit_price: number;
 
   @ApiProperty({ example: 30000, description: 'Subtotal for this item (quantity * unit_price)' })
-  @IsNumber()
+  @IsInt()
   @Min(0)
   subtotal: number;
 }
@@ -77,27 +92,21 @@ export class SyncItemDto {
 export class SyncTransactionDto {
   @ApiProperty({
     example: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
-    description: 'Locally generated UUID v4 for idempotency',
+    description: 'Locally generated UUID v4 or v7 for idempotency',
   })
-  @IsUUID(4)
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
   @IsNotEmpty()
   offline_uuid: string;
-
-  @ApiProperty({ example: 'DEV-1', description: 'ID of the device submitting the transaction' })
-  @IsString()
-  @IsNotEmpty()
-  id_device: string;
 
   @ApiProperty({
     example: '2026-08-16T10:00:00.000Z',
     description: 'ISO-8601 timestamp of when the transaction occurred locally',
   })
-  @IsString()
-  @IsNotEmpty()
+  @IsISO8601()
   created_at_local: string;
 
   @ApiProperty({ example: 30000, description: 'Subtotal of all items' })
-  @IsNumber()
+  @IsInt()
   @Min(0)
   subtotal: number;
 
@@ -105,7 +114,7 @@ export class SyncTransactionDto {
     example: 30000,
     description: 'Total after discounts/taxes (currently same as subtotal)',
   })
-  @IsNumber()
+  @IsInt()
   @Min(0)
   total: number;
 

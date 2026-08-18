@@ -1,5 +1,6 @@
 # compiled output
 /dist
+/artifacts
 /node_modules
 /build
 

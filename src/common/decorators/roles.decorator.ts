@@ -7,7 +7,7 @@ export const ROLES_KEY = 'roles';
  * Decorator untuk mendefinisikan roles yang diizinkan mengakses endpoint.
  * Digunakan bersama RolesGuard.
  * @example
- * @Roles(Role.ADMIN, Role.SUPERVISOR)
+ * @Roles(Role.OWNER)
  * @Get('reports')
  * getReports() { ... }
  */

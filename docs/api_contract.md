@@ -93,11 +93,11 @@ Pairing code single-use, short-lived, dan rate-limited. Revocation menginvalidas
 ## Product dan stock
 
 - `GET /api/v1/products` — semua role, merchant-scoped.
-- `POST /api/v1/products` — Entry/Owner.
-- `PATCH /api/v1/products/:id` — Entry/Owner.
-- `POST /api/v1/products/:id/archive` — Entry/Owner.
-- `POST /api/v1/products/:id/restore` — Entry/Owner.
-- `POST /api/v1/products/:id/stock-adjustments` — Entry/Owner.
+- `POST /api/v1/products` — Entry.
+- `PATCH /api/v1/products/:id` — Entry.
+- `POST /api/v1/products/:id/archive` — Entry.
+- `POST /api/v1/products/:id/restore` — Entry.
+- `POST /api/v1/products/:id/stock-adjustments` — Entry.
 - `GET /api/v1/products/:id/stock-history` — Entry/Owner.
 
 Price, quantity, subtotal, dan total adalah integer rupiah/units. Historical sync membawa product snapshot dan tidak direprice ke current catalog.
@@ -212,10 +212,12 @@ Confirm conflict mengizinkan negative stock dan mencatat discrepancy exactly onc
 
 ## Payment exception
 
-- `GET /api/v1/payments?status=PENDING` — Owner; daftar pembayaran non-cash yang perlu diperiksa.
-- `POST /api/v1/payments/:id/reconcile` — Owner; action `CONFIRM | REJECT`, reason required. `CONFIRM` menghasilkan `RECONCILED`; `REJECT` menghasilkan `FAILED`.
+- `GET /api/v1/payments?status=VERIFIED|FAILED` — Owner; merchant-scoped payment history.
+- `GET /api/v1/payment-reconciliations?status=OPEN` — Owner; exception cases.
+- `POST /api/v1/payments/:id/reconciliations` — Owner; membuka case `OPEN` dengan reason/evidence note.
+- `POST /api/v1/payment-reconciliations/:id/resolve` — Owner; action `VALID | INVALID`, resolution note required. `INVALID` juga wajib mengirim append-only void/correction intent.
 
-Canonical payment status hanya `PENDING | VERIFIED | FAILED | RECONCILED`. Payment `FAILED` tidak otomatis mengubah immutable transaction. Owner tetap menjalankan append-only void/correction bila efek sale perlu dibatalkan dari ledger dan reporting.
+Canonical payment status hanya `VERIFIED | FAILED`. Canonical reconciliation status adalah `OPEN | RESOLVED_VALID | RESOLVED_INVALID`. Payment `FAILED` tidak mengubah immutable transaction row; invalid resolution dan append-only correction dibuat dalam transaction boundary yang sama.
 
 ## Owner dashboard dan audit
 

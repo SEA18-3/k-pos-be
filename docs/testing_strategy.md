@@ -14,7 +14,7 @@
 - Refresh rotation/reuse detection, offline lease signature/binding/expiry.
 - Canonical payload normalization/hash, UUID v4/v7, arithmetic.
 - Sync state transition, retry classification, delay selection.
-- Payment transition (`PENDING → RECONCILED | FAILED`), stale catalog acceptance, effective transaction/correction.
+- Payment verification, reconciliation exception transition, invalid-resolution atomic correction, stale catalog acceptance, effective transaction/correction.
 - Projection math, timezone/date boundary, idempotency keys.
 
 ## PostgreSQL + Rabbit integration
@@ -53,7 +53,7 @@
 
 ## Load evidence
 
-CI smoke menjalankan 50 merchant selama 15–30 detik. Capacity command menjalankan 500 merchant selama lima menit. Workload mencampur sync writer, Entry mutation, Owner report reader, polling receipts, dan reconciliation.
+CI smoke menjalankan 50 merchant selama 15–30 detik. Capacity command menjalankan 500 merchant selama lima menit. Pada capacity profile, setiap counter membuat satu sale per 30 detik (steady-state 16,67 sale/detik); 20% counter juga menguji duplicate retry dan catalog read, 10% menjalankan Owner dashboard read, dan 5% menjalankan Owner control read plus Entry stock mutation. Arrival diberi deterministic phase agar merepresentasikan toko independen, bukan synthetic millisecond-zero herd. Receipt polling dan reporting convergence diperiksa untuk seluruh sale.
 
 Acceptance:
 
@@ -69,4 +69,4 @@ CI smoke failure memblokir merge. Capacity profile bukan setiap PR, tetapi wajib
 
 ## Quality gate
 
-Docs link/format, lint, typecheck, unit, integration, OpenAPI drift, production builds tiga PWA, E2E, dan mixed-load smoke harus hijau sebelum cutover Fastify atau release. Skipped test harus disebut eksplisit di handoff.
+Docs link/format, lint, typecheck, unit, integration, OpenAPI drift, production builds tiga PWA, E2E, dan mixed-load smoke harus hijau sebelum release. Skipped test harus disebut eksplisit di handoff.
