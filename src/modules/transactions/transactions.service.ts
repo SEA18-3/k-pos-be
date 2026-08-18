@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryTransactionsDto } from './dto/query-transactions.dto';
 import { VoidTransactionDto } from './dto/void-transaction.dto';
@@ -162,10 +158,7 @@ export class TransactionsService {
         if (transaction.payment) {
           await tx.payment.update({
             where: { id_payment: transaction.payment.id_payment },
-            data: {
-
-
-            },
+            data: {},
           });
         }
 
@@ -258,6 +251,9 @@ export class TransactionsService {
           quantity: item.quantity,
           unit_price: item.unit_price,
           subtotal: item.subtotal,
+          product_name: 'Correction',
+          sku_snapshot: 'NONE',
+          catalog_version: new Date(),
         })),
       });
 
@@ -297,8 +293,6 @@ export class TransactionsService {
             transfer_ref: originalTx.payment.transfer_ref,
             verified_at: originalTx.payment.verified_at,
             verified_by: originalTx.payment.verified_by,
-
-
           },
         });
       }
@@ -340,5 +334,3 @@ export class TransactionsService {
     return result;
   }
 }
-
-

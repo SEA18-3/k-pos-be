@@ -75,7 +75,10 @@ export class TransactionsController {
     description:
       'Buat versi baru dari transaksi yang sudah CONFIRMED. Transaksi lama akan di-VOID (tidak dihapus). Stok lama direverted, stok baru dipotong. Catatan koreksi disimpan di TransactionCorrection.',
   })
-  @ApiResponse({ status: 200, description: 'Transaction corrected. Returns TransactionCorrection record.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Transaction corrected. Returns TransactionCorrection record.',
+  })
   @ApiResponse({ status: 400, description: 'Only CONFIRMED transactions can be corrected.' })
   @ApiResponse({ status: 404, description: 'Transaction not found.' })
   correctTransaction(
