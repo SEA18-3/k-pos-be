@@ -5,7 +5,8 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma } from '../../generated/prisma/client';
 
 // Monkey patch Prisma Decimal to always serialize as number in JSON responses
-(Prisma.Decimal.prototype as any).toJSON = function () {
+// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+(Prisma.Decimal.prototype as any).toJSON = function (this: Prisma.Decimal) {
   return this.toNumber();
 };
 
