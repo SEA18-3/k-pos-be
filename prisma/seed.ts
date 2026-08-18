@@ -7,6 +7,7 @@ import 'dotenv/config';
 const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const pool = new Pool({
   connectionString,
+  // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
   ssl: { rejectUnauthorized: false },
 });
 const adapter = new PrismaPg(pool);

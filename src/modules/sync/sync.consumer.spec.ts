@@ -38,7 +38,7 @@ describe('SyncConsumerService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('handleSyncTransaction', () => {
+  describe('handleSyncTransactionBatch', () => {
     const mockTransactionPayload: SyncTransactionDto = {
       offline_uuid: 'uuid-123',
       id_device: 'dev-1',
@@ -78,7 +78,7 @@ describe('SyncConsumerService', () => {
         id_transaction: 'trx-1',
       });
 
-      await service.handleSyncTransaction(mockTransactionPayload, mockContext);
+      await service.handleSyncTransactionBatch([mockTransactionPayload], mockContext);
 
       expect(prismaService.transaction.findUnique).toHaveBeenCalledWith({
         where: {
@@ -96,7 +96,7 @@ describe('SyncConsumerService', () => {
       (prismaService.transaction.findUnique as jest.Mock).mockResolvedValue(null);
       (prismaService.$transaction as jest.Mock).mockResolvedValue(undefined);
 
-      await service.handleSyncTransaction(mockTransactionPayload, mockContext);
+      await service.handleSyncTransactionBatch([mockTransactionPayload], mockContext);
 
       expect(prismaService.$transaction).toHaveBeenCalled();
       expect(mockChannel.ack).toHaveBeenCalled();
