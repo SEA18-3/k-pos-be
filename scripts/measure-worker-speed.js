@@ -9,6 +9,7 @@ async function main() {
   
   console.log(`[Auth] Attempting login as ${email}...`);
   try {
+    // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request
     const loginRes = await fetch('http://127.0.0.1:3000/api/v1/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -69,6 +70,7 @@ async function main() {
   console.log("[HTTP] Sending 1 batch (100 transactions) to Sync API...");
   
   try {
+    // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request
     const res = await fetch('http://127.0.0.1:3000/api/v1/sync', params);
     const apiEnd = Date.now();
     
@@ -83,6 +85,7 @@ async function main() {
     
     let processedCount = 0;
     while (processedCount < 100) {
+      // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request
       const txRes = await fetch(`http://127.0.0.1:3000/api/v1/transactions?limit=100`, {
         headers: { Authorization: `Bearer ${token}` }
       });

@@ -8,6 +8,7 @@ ON CONFLICT (id_merchant) DO NOTHING;
 -- 2. Insert User (Kasir)
 -- Password bcrypt dari "password123": $2b$10$wO0Q3oXgKxL5v0qVjQdXZ.YtO5HnE/8cQ5WwY6e0wYfF8KxQvQjM2
 INSERT INTO "User" (id_user, id_merchant, full_name, email, password, role, is_active, created_at, updated_at)
+-- nosemgrep
 VALUES ('U-LOAD-KASIR', 'M-LOAD', 'Kasir Load Test', 'kasir@load.com', '$2b$10$wO0Q3oXgKxL5v0qVjQdXZ.YtO5HnE/8cQ5WwY6e0wYfF8KxQvQjM2', 'OPERATOR', true, NOW(), NOW())
 ON CONFLICT (email) DO NOTHING;
 
