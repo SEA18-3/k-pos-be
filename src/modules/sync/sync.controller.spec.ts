@@ -4,6 +4,8 @@ import { SyncProducerService } from './sync-producer.service';
 import { SyncBatchDto } from './dto/sync-batch.dto';
 import { PaymentMethod } from '../../../generated/prisma/client';
 
+import { SyncService } from './sync.service';
+
 describe('SyncController', () => {
   let controller: SyncController;
   let producerService: SyncProducerService;
@@ -16,6 +18,13 @@ describe('SyncController', () => {
           provide: SyncProducerService,
           useValue: {
             publishBatch: jest.fn(),
+          },
+        },
+        {
+          provide: SyncService,
+          useValue: {
+            getSyncStatus: jest.fn(),
+            validateBatch: jest.fn(),
           },
         },
       ],
@@ -55,9 +64,11 @@ describe('SyncController', () => {
         ],
       };
 
-      const result = await controller.syncTransactions(mockBatch);
+      const result = await controller.syncTransactions('device-1', mockBatch);
 
-      expect(producerService.publishBatch).toHaveBeenCalledWith(mockBatch.transactions);
+      expect(producerService.publishBatch).toHaveBeenCalledWith(
+        mockBatch.transactions.map((t) => ({ ...t, id_device: 'device-1' })),
+      );
       expect(result.message).toBe('Batch diterima dan sedang diproses');
       expect(result.data.accepted).toBe(1);
       expect(result.data.queued_at).toBeDefined();

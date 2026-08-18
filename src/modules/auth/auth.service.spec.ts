@@ -28,6 +28,7 @@ describe('AuthService', () => {
       create: jest.fn(),
       findUnique: jest.fn(),
       deleteMany: jest.fn(),
+      delete: jest.fn(),
     },
   };
 
