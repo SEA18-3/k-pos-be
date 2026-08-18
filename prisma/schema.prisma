@@ -16,10 +16,9 @@ datasource db {
 // ENUM DEFINITIONS
 
 enum UserRole {
-  ADMIN       
-  OWNER    
-  OPERATOR       
-  ENTRY 
+  OWNER
+  OPERATOR
+  ENTRY
 }
 
 enum TransactionStatus {
@@ -30,24 +29,28 @@ enum TransactionStatus {
 }
 
 enum PaymentMethod {
-  CASH           
-  STATIC_QRIS    
-  BANK_TRANSFER  
+  CASH
+  STATIC_QRIS
+  BANK_TRANSFER
 }
 
 enum PaymentStatus {
-  PENDING      
-  VERIFIED     
-  FAILED       
-  RECONCILED   
+  VERIFIED
+  FAILED
 }
 
 enum SyncStatus {
-  PENDING_SYNC  
-  SYNCING       
-  SYNCED        
-  SYNC_FAILED   
-  SYNC_CONFLICT 
+  PENDING_SYNC
+  SYNCING
+  SYNCED
+  SYNC_FAILED
+  SYNC_CONFLICT
+}
+
+enum ReconciliationStatus {
+  OPEN
+  RESOLVED_VALID
+  RESOLVED_INVALID
 }
 
 enum DeviceStatus {
@@ -57,60 +60,60 @@ enum DeviceStatus {
 }
 
 enum StockMovementType {
-  SALE         
-  ADJUSTMENT   
-  RETURN       
-  CORRECTION    
+  SALE
+  ADJUSTMENT
+  RETURN
+  CORRECTION
 }
 
 // USER MANAGEMENT
 
 model User {
-  id_user       String    @id @default(cuid())
-  full_name     String
-  email         String    @unique
-  password      String  
-  role          UserRole
-  id_merchant   String?
-  is_active     Boolean   @default(true)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
+  id_user     String   @id @default(cuid())
+  full_name   String
+  email       String   @unique
+  password    String
+  role        UserRole
+  id_merchant String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  merchant      Merchant? @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
-  transactions  Transaction[]
-  devices       Device[]
-  stockHistory  StockHistory[] 
-  corrections   TransactionCorrection[] @relation("CorrectedByUser")
-  refreshTokens RefreshToken[]
-  voidedTransactions Transaction[] @relation("VoidedTransactions")
-  verifiedPayments Payment[] @relation("VerifiedPayments")
+  merchant               Merchant?               @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
+  transactions           Transaction[]
+  devices                Device[]
+  stockHistory           StockHistory[]
+  corrections            TransactionCorrection[] @relation("CorrectedByUser")
+  refreshTokens          RefreshToken[]
+  voidedTransactions     Transaction[]           @relation("VoidedTransactions")
+  verifiedPayments       Payment[]               @relation("VerifiedPayments")
+  openedReconciliations  Reconciliation[]        @relation("OpenedReconciliations")
+  resolvedReconciliations Reconciliation[]       @relation("ResolvedReconciliations")
 
   @@index([email])
   @@index([role])
 }
 
-
-
 // MERCHANT & LOCATION
 
 model Merchant {
-  id_merchant    String    @id @default(cuid())
-  name           String
-  address        String?
-  phone          String?
-  email          String?
-  is_active      Boolean   @default(true)
-  onboarded_at   DateTime  @default(now())
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
+  id_merchant  String   @id @default(cuid())
+  name         String
+  address      String?
+  phone        String?
+  email        String?
+  is_active    Boolean  @default(true)
+  onboarded_at DateTime @default(now())
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
 
-  users          User[]
-  devices        Device[]
-  products       Product[]
-  transactions   Transaction[]
-  payments       Payment[]
-  inventory      Inventory[]
-  stockHistories StockHistory[] 
+  users           User[]
+  devices         Device[]
+  products        Product[]
+  transactions    Transaction[]
+  payments        Payment[]
+  inventory       Inventory[]
+  stockHistories  StockHistory[]
 
   @@index([is_active])
 }
@@ -118,24 +121,24 @@ model Merchant {
 // DEVICE MANAGEMENT
 
 model Device {
-  id_device        String    @id @default(cuid())
-  id_merchant      String
-  id_user          String
-  name             String    
-  device_id_hash   String?      
-  pairing_code     String?      @unique
-  status           DeviceStatus @default(UNPAIRED)
-  last_online_at   DateTime?
-  last_sync_at     DateTime?
-  is_active        Boolean   @default(true)
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
+  id_device      String       @id @default(cuid())
+  id_merchant    String
+  id_user        String
+  name           String
+  device_id_hash String?
+  pairing_code   String?      @unique
+  status         DeviceStatus @default(UNPAIRED)
+  last_online_at DateTime?
+  last_sync_at   DateTime?
+  is_active      Boolean      @default(true)
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
 
-  merchant         Merchant  @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
-  user             User      @relation(fields: [id_user], references: [id_user], onDelete: Cascade)
-  transactions     Transaction[]
-  syncLogs         DeviceSyncLog[]
-  syncQueues       SyncQueue[]
+  merchant     Merchant        @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
+  user         User            @relation(fields: [id_user], references: [id_user], onDelete: Cascade)
+  transactions Transaction[]
+  syncLogs     DeviceSyncLog[]
+  syncQueues   SyncQueue[]
 
   @@unique([id_merchant, device_id_hash])
   @@index([id_merchant])
@@ -143,16 +146,16 @@ model Device {
 }
 
 model DeviceSyncLog {
-  id              String    @id @default(cuid())
-  id_device       String
-  sync_timestamp  DateTime  @default(now())
-  status          SyncStatus
-  failed_count    Int       @default(0)
-  error_message   String?
-  synced_records  Int       @default(0)
-  details         String?   
+  id             String     @id @default(cuid())
+  id_device      String
+  sync_timestamp DateTime   @default(now())
+  status         SyncStatus
+  failed_count   Int        @default(0)
+  error_message  String?
+  synced_records Int        @default(0)
+  details        String?
 
-  device          Device    @relation(fields: [id_device], references: [id_device], onDelete: Cascade)
+  device Device @relation(fields: [id_device], references: [id_device], onDelete: Cascade)
 
   @@index([id_device])
   @@index([sync_timestamp])
@@ -162,57 +165,57 @@ model DeviceSyncLog {
 // PRODUCT & INVENTORY MANAGEMENT
 
 model Product {
-  id_product    String    @id @default(cuid())
-  id_merchant   String
-  name          String
-  sku           String
-  price         Decimal   @db.Decimal(12, 2)
-  image_url     String?   
-  is_active     Boolean   @default(true)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
+  id_product  String   @id @default(cuid())
+  id_merchant String
+  name        String
+  sku         String
+  price       Decimal  @db.Decimal(12, 2)
+  image_url   String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  merchant      Merchant  @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
-  details       DetailTransaction[]
-  inventory     Inventory?
-  stockHistory  StockHistory[]
+  merchant     Merchant            @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
+  details      DetailTransaction[]
+  inventory    Inventory?
+  stockHistory StockHistory[]
 
   @@unique([id_merchant, sku])
   @@index([id_merchant])
 }
 
 model Inventory {
-  id_inventory  String    @id @default(cuid())
-  id_product    String    @unique
+  id_inventory  String   @id @default(cuid())
+  id_product    String   @unique
   id_merchant   String
-  current_stock Int       @default(0)
-  reserved      Int       @default(0) 
-  last_updated  DateTime  @updatedAt
+  current_stock Int      @default(0)
+  reserved      Int      @default(0)
+  last_updated  DateTime @updatedAt
 
-  product       Product   @relation(fields: [id_product], references: [id_product], onDelete: Cascade)
-  merchant      Merchant  @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
+  product  Product  @relation(fields: [id_product], references: [id_product], onDelete: Cascade)
+  merchant Merchant @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
 
   @@index([id_merchant])
 }
 
 model StockHistory {
-  id_stock      String    @id @default(cuid())
-  id_product    String
-  id_merchant   String?
-  id_user       String?
-  movement_type StockMovementType
-  quantity      Int       
+  id_stock       String            @id @default(cuid())
+  id_product     String
+  id_merchant    String?
+  id_user        String?
+  movement_type  StockMovementType
+  quantity       Int
   id_transaction String?
   id_correction  String?
-  date          DateTime  @default(now())
-  notes         String?
-  created_at    DateTime  @default(now())
+  date           DateTime          @default(now())
+  notes          String?
+  created_at     DateTime          @default(now())
 
-  product       Product    @relation(fields: [id_product], references: [id_product], onDelete: Cascade)
-  merchant      Merchant?  @relation(fields: [id_merchant], references: [id_merchant], onDelete: SetNull)
-  user          User?      @relation(fields: [id_user], references: [id_user], onDelete: SetNull)
-  transaction   Transaction? @relation(fields: [id_transaction], references: [id_transaction], onDelete: SetNull)
-  correction    TransactionCorrection? @relation(fields: [id_correction], references: [id_correction], onDelete: SetNull)
+  product     Product                @relation(fields: [id_product], references: [id_product], onDelete: Cascade)
+  merchant    Merchant?              @relation(fields: [id_merchant], references: [id_merchant], onDelete: SetNull)
+  user        User?                  @relation(fields: [id_user], references: [id_user], onDelete: SetNull)
+  transaction Transaction?           @relation(fields: [id_transaction], references: [id_transaction], onDelete: SetNull)
+  correction  TransactionCorrection? @relation(fields: [id_correction], references: [id_correction], onDelete: SetNull)
 
   @@index([id_product])
   @@index([id_merchant])
@@ -223,41 +226,42 @@ model StockHistory {
 // TRANSACTION & PAYMENT
 
 model Transaction {
-  id_transaction  String    @id @default(cuid())
-  id_merchant     String
-  id_user         String    
-  id_device       String    
-  
-  status          TransactionStatus @default(PENDING)
-  sync_status     SyncStatus        @default(PENDING_SYNC)
-  
-  created_at_local  DateTime? 
-  created_at        DateTime  @default(now()) 
-  confirmed_at      DateTime? 
-  synced_at         DateTime? 
-  
-  total             Decimal   @db.Decimal(12, 2)
-  subtotal          Decimal   @db.Decimal(12, 2)
-  
-  offline_uuid      String?   @unique
-  
-  notes             String?
-  
-  voided_at         DateTime?
-  voided_by         String?  
-  void_reason       String?
+  id_transaction String @id @default(cuid())
+  id_merchant    String
+  id_user        String
+  id_device      String
 
-  voidedByUser      User?     @relation("VoidedTransactions", fields: [voided_by], references: [id_user], onDelete: Restrict)
-  merchant          Merchant  @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
-  user              User      @relation(fields: [id_user], references: [id_user], onDelete: Restrict)
-  device            Device    @relation(fields: [id_device], references: [id_device], onDelete: Restrict)
-  
-  details           DetailTransaction[]
-  payment           Payment?
-  correctionsAsOld  TransactionCorrection[] @relation("OldTransaction")
-  correctionsAsNew  TransactionCorrection[] @relation("NewTransaction")
-  stockHistories    StockHistory[]
-  syncQueues        SyncQueue[]
+  status      TransactionStatus @default(PENDING)
+  sync_status SyncStatus        @default(PENDING_SYNC)
+
+  created_at_local DateTime?
+  created_at       DateTime  @default(now())
+  confirmed_at     DateTime?
+  synced_at        DateTime?
+
+  total    Decimal @db.Decimal(12, 2)
+  subtotal Decimal @db.Decimal(12, 2)
+
+  offline_uuid String? @unique
+  payload_hash String?
+
+  notes String?
+
+  voided_at   DateTime?
+  voided_by   String?
+  void_reason String?
+
+  voidedByUser User?    @relation("VoidedTransactions", fields: [voided_by], references: [id_user], onDelete: Restrict)
+  merchant     Merchant @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
+  user         User     @relation(fields: [id_user], references: [id_user], onDelete: Restrict)
+  device       Device   @relation(fields: [id_device], references: [id_device], onDelete: Restrict)
+
+  details          DetailTransaction[]
+  payment          Payment?
+  correctionsAsOld TransactionCorrection[] @relation("OldTransaction")
+  correctionsAsNew TransactionCorrection[] @relation("NewTransaction")
+  stockHistories   StockHistory[]
+  syncQueues       SyncQueue[]
 
   @@unique([id_device, offline_uuid])
   @@index([id_merchant])
@@ -271,16 +275,19 @@ model Transaction {
 }
 
 model DetailTransaction {
-  id_detail       String    @id @default(cuid())
-  id_transaction  String
-  id_product      String
-  quantity        Int
-  unit_price      Decimal   @db.Decimal(12, 2)
-  subtotal        Decimal   @db.Decimal(12, 2)
-  created_at      DateTime  @default(now())
+  id_detail      String   @id @default(cuid())
+  id_transaction String
+  id_product     String
+  quantity       Int
+  unit_price     Decimal  @db.Decimal(12, 2)
+  subtotal       Decimal  @db.Decimal(12, 2)
+  product_name   String
+  sku_snapshot   String
+  catalog_version DateTime
+  created_at     DateTime @default(now())
 
-  transaction     Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
-  product         Product     @relation(fields: [id_product], references: [id_product], onDelete: Restrict)
+  transaction Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
+  product     Product     @relation(fields: [id_product], references: [id_product], onDelete: Restrict)
 
   @@index([id_transaction])
   @@index([id_product])
@@ -289,32 +296,30 @@ model DetailTransaction {
 // PAYMENT
 
 model Payment {
-  id_payment      String    @id @default(cuid())
-  id_transaction  String    @unique
-  id_merchant     String
-  
-  amount          Decimal   @db.Decimal(12, 2)
-  method          PaymentMethod
-  status          PaymentStatus @default(PENDING)
-  
-  cash_received   Decimal?  @db.Decimal(12, 2) 
-  change_amount   Decimal?  @db.Decimal(12, 2) 
-  qris_code       String?  
-  transfer_ref    String?  
-  
-  verified_at     DateTime?
-  verified_by     String? 
-  verifiedByUser  User?    @relation("VerifiedPayments", fields: [verified_by], references: [id_user], onDelete: Restrict)
-  verification_note String?
-  
-  reconciliation_note String?
-  reconciled_at   DateTime?
-  
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  id_payment     String @id @default(cuid())
+  id_transaction String @unique
+  id_merchant    String
 
-  transaction     Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
-  merchant        Merchant  @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
+  amount Decimal       @db.Decimal(12, 2)
+  method PaymentMethod
+  status PaymentStatus @default(VERIFIED)
+
+  cash_received Decimal? @db.Decimal(12, 2)
+  change_amount Decimal? @db.Decimal(12, 2)
+  qris_code     String?
+  transfer_ref  String?
+
+  verified_at       DateTime?
+  verified_by       String?
+  verifiedByUser    User?     @relation("VerifiedPayments", fields: [verified_by], references: [id_user], onDelete: Restrict)
+  verification_note String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  transaction Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
+  merchant    Merchant    @relation(fields: [id_merchant], references: [id_merchant], onDelete: Cascade)
+  reconciliations Reconciliation[]
 
   @@index([id_transaction])
   @@index([id_merchant])
@@ -326,19 +331,19 @@ model Payment {
 // TRANSACTION CORRECTION
 
 model TransactionCorrection {
-  id_correction       String    @id @default(cuid())
-  id_old_transaction  String    
-  id_new_transaction  String    @unique
-  corrected_by        String    
-  
-  reason              String
-  
-  created_at          DateTime  @default(now())
+  id_correction      String @id @default(cuid())
+  id_old_transaction String
+  id_new_transaction String @unique
+  corrected_by       String
 
-  oldTransaction      Transaction @relation("OldTransaction", fields: [id_old_transaction], references: [id_transaction], onDelete: Restrict)
-  newTransaction      Transaction @relation("NewTransaction", fields: [id_new_transaction], references: [id_transaction], onDelete: Cascade)
-  correctedBy         User        @relation("CorrectedByUser", fields: [corrected_by], references: [id_user], onDelete: Restrict)
-  stockHistories      StockHistory[]
+  reason String
+
+  created_at DateTime @default(now())
+
+  oldTransaction Transaction    @relation("OldTransaction", fields: [id_old_transaction], references: [id_transaction], onDelete: Restrict)
+  newTransaction Transaction    @relation("NewTransaction", fields: [id_new_transaction], references: [id_transaction], onDelete: Cascade)
+  correctedBy    User           @relation("CorrectedByUser", fields: [corrected_by], references: [id_user], onDelete: Restrict)
+  stockHistories StockHistory[]
 
   @@index([id_old_transaction])
   @@index([corrected_by])
@@ -348,23 +353,25 @@ model TransactionCorrection {
 // AUDIT & SYNC TRACKING
 
 model SyncQueue {
-  id              String    @id @default(cuid())
-  id_device       String
-  id_transaction  String
-  operation       String   
-  payload         String    
-  retry_count     Int       @default(0)
-  max_retries     Int       @default(3)
-  last_error      String?
-  status          SyncStatus @default(PENDING_SYNC)
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  id             String     @id @default(cuid())
+  id_device      String
+  id_transaction String?    // Optional: null if transaction never reached DB
+  offline_uuid   String?    // Original offline UUID for traceability
+  operation      String
+  payload        String
+  retry_count    Int        @default(0)
+  max_retries    Int        @default(3)
+  last_error     String?
+  status         SyncStatus @default(PENDING_SYNC)
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
 
-  device          Device      @relation(fields: [id_device], references: [id_device], onDelete: Cascade)
-  transaction     Transaction @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
+  device      Device       @relation(fields: [id_device], references: [id_device], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [id_transaction], references: [id_transaction], onDelete: Cascade)
 
   @@index([id_device])
   @@index([id_transaction])
+  @@index([offline_uuid])
   @@index([status])
   @@index([created_at])
 }
@@ -372,14 +379,39 @@ model SyncQueue {
 // AUTH & SECURITY
 
 model RefreshToken {
-  id          String   @id @default(cuid())
-  id_user     String
-  token       String   @unique
-  expires_at  DateTime
-  created_at  DateTime @default(now())
+  id         String   @id @default(cuid())
+  id_user    String
+  token      String   @unique
+  expires_at DateTime
+  created_at DateTime @default(now())
 
-  user        User     @relation(fields: [id_user], references: [id_user], onDelete: Cascade)
+  user User @relation(fields: [id_user], references: [id_user], onDelete: Cascade)
 
   @@index([id_user])
   @@index([token])
+}
+
+// RECONCILIATION
+
+model Reconciliation {
+  id_reconciliation  String               @id @default(cuid())
+  id_payment         String
+  opened_by          String
+  reason             String
+  evidence_note      String?
+  status             ReconciliationStatus @default(OPEN)
+  resolved_by        String?
+  resolved_at        DateTime?
+  resolution_note    String?
+  id_correction      String?
+  created_at         DateTime             @default(now())
+  updated_at         DateTime             @updatedAt
+
+  payment            Payment   @relation(fields: [id_payment], references: [id_payment])
+  openedByUser       User      @relation("OpenedReconciliations", fields: [opened_by], references: [id_user])
+  resolvedByUser     User?     @relation("ResolvedReconciliations", fields: [resolved_by], references: [id_user])
+
+  @@index([id_payment])
+  @@index([status])
+  @@index([opened_by])
 }

@@ -1,27 +1,114 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
-import { CreatePaymentDto } from './dto/create-payment.dto';
-import { UpdatePaymentDto } from './dto/update-payment.dto';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import type { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { CreateReconciliationDto } from '../reconciliations/dto/create-reconciliation.dto';
+
+export type PaymentStatusFilter = 'VERIFIED' | 'FAILED';
 
 @Injectable()
 export class PaymentsService {
-  create(createPaymentDto: CreatePaymentDto) {
-    return 'This action adds a new payment';
+  constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * GET /payments — List payments with optional status filter (merchant-scoped).
+   */
+  async findAll(user: JwtPayload, status?: PaymentStatusFilter) {
+    return this.prisma.payment.findMany({
+      where: {
+        id_merchant: user.id_merchant,
+        ...(status ? { status: status } : {}),
+      },
+      include: {
+        transaction: {
+          select: {
+            id_transaction: true,
+            offline_uuid: true,
+            status: true,
+            sync_status: true,
+            created_at_local: true,
+          },
+        },
+        reconciliations: {
+          select: {
+            id_reconciliation: true,
+            status: true,
+            reason: true,
+            created_at: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
   }
 
-  findAll() {
-    return `This action returns all payments`;
+  /**
+   * GET /payments/:id — Get single payment (merchant-scoped).
+   */
+  async findOne(user: JwtPayload, id: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id_payment: id },
+      include: {
+        transaction: true,
+        reconciliations: {
+          include: {
+            openedByUser: { select: { full_name: true } },
+            resolvedByUser: { select: { full_name: true } },
+          },
+        },
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    if (payment.id_merchant !== user.id_merchant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return payment;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} payment`;
-  }
+  /**
+   * POST /payments/:id/reconcile — Open a reconciliation case for a payment.
+   * Delegates to the Reconciliations logic (same as POST /reconciliations but via payment ID).
+   */
+  async reconcile(user: JwtPayload, paymentId: string, dto: CreateReconciliationDto) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id_payment: paymentId },
+    });
 
-  update(id: number, updatePaymentDto: UpdatePaymentDto) {
-    return `This action updates a #${id} payment`;
-  }
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
 
-  remove(id: number) {
-    return `This action removes a #${id} payment`;
+    if (payment.id_merchant !== user.id_merchant) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const existing = await this.prisma.reconciliation.findFirst({
+      where: { id_payment: paymentId, status: 'OPEN' },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Payment already has an open reconciliation case');
+    }
+
+    return this.prisma.reconciliation.create({
+      data: {
+        id_payment: paymentId,
+        opened_by: user.sub,
+        reason: dto.reason,
+        evidence_note: dto.evidence,
+      },
+      include: {
+        payment: { select: { id_payment: true, amount: true, method: true, status: true } },
+      },
+    });
   }
 }

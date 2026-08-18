@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unused-vars, @typescript-eslint/no-unsafe-argument */
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 import { AuthController } from './auth.controller';
@@ -34,34 +35,48 @@ describe('AuthController', () => {
   });
 
   describe('refresh', () => {
-    it('should pass the x-refresh-token header to the service', async () => {
-      mockAuthService.refresh.mockResolvedValue({ access_token: 'new_token' });
+    it('should refresh token via cookie', async () => {
+      mockAuthService.refresh.mockResolvedValue({
+        refresh_token: 'new_token',
+        access_token: 'acc',
+      });
 
-      const result = await controller.refresh('some_refresh_token');
+      const req: any = { cookies: { refreshToken: 'some_refresh_token' } };
+      const res: any = { cookie: jest.fn(), send: jest.fn() };
+
+      const result = await controller.refresh(req, res);
 
       expect(mockAuthService.refresh).toHaveBeenCalledWith('some_refresh_token');
-      expect(result).toEqual({ access_token: 'new_token' });
+      expect(res.cookie).toHaveBeenCalled();
     });
 
-    it('should throw UnauthorizedException when header is missing', async () => {
-      await expect(controller.refresh(undefined)).rejects.toThrow(UnauthorizedException);
+    it('should throw UnauthorizedException when cookie is missing', async () => {
+      const req: any = { cookies: {} };
+      const res: any = { cookie: jest.fn() };
+      await expect(controller.refresh(req, res)).rejects.toThrow(UnauthorizedException);
       expect(mockAuthService.refresh).not.toHaveBeenCalled();
     });
   });
 
   describe('logout', () => {
-    it('should pass the x-refresh-token header to the service', async () => {
+    it('should pass the refresh token to the service and clear cookie', async () => {
       mockAuthService.logout.mockResolvedValue({ success: true });
 
-      const result = await controller.logout('some_refresh_token');
+      const req: any = { cookies: { refreshToken: 'some_refresh_token' } };
+      const res: any = { clearCookie: jest.fn(), send: jest.fn() };
+
+      const result = await controller.logout(req, res);
 
       expect(mockAuthService.logout).toHaveBeenCalledWith('some_refresh_token');
-      expect(result).toEqual({ success: true });
+      expect(res.clearCookie).toHaveBeenCalled();
     });
 
-    it('should throw UnauthorizedException when header is missing', async () => {
-      await expect(controller.logout(undefined)).rejects.toThrow(UnauthorizedException);
+    it('should not throw if cookie is missing but just clear it', async () => {
+      const req: any = { cookies: {} };
+      const res: any = { clearCookie: jest.fn(), send: jest.fn() };
+      await controller.logout(req, res);
       expect(mockAuthService.logout).not.toHaveBeenCalled();
+      expect(res.clearCookie).toHaveBeenCalled();
     });
   });
 });

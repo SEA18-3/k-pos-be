@@ -40,11 +40,11 @@ async function main() {
       email: 'admin@kpos.com',
       full_name: 'Super Admin',
       password: passwordHash,
-      role: UserRole.ADMIN,
+      role: UserRole.OWNER,
     },
   });
 
-  await prisma.user.upsert({
+  const owner = await prisma.user.upsert({
     where: { email: 'owner@kpos.com' },
     update: {},
     create: {
@@ -139,12 +139,15 @@ async function main() {
           quantity: 1,
           unit_price: 3500,
           subtotal: 3500,
+          product_name: 'Produk A',
+          sku_snapshot: 'SKU-A',
+          catalog_version: new Date('2026-08-01'),
         }
       }
     }
   });
 
-  await prisma.transaction.upsert({
+  const trxConfirmed = await prisma.transaction.upsert({
     where: { id_transaction: 'TRX-CONFIRMED-1' },
     update: {},
     create: {
@@ -165,6 +168,9 @@ async function main() {
             quantity: 1,
             unit_price: 3500,
             subtotal: 3500,
+            product_name: 'Produk A',
+            sku_snapshot: 'SKU-A',
+            catalog_version: new Date('2026-08-01'),
           },
           {
             id_detail: 'DET-3',
@@ -172,13 +178,96 @@ async function main() {
             quantity: 1,
             unit_price: 5000,
             subtotal: 5000,
+            product_name: 'Produk B',
+            sku_snapshot: 'SKU-B',
+            catalog_version: new Date('2026-08-01'),
           }
         ]
       }
     }
   });
 
-  console.log('Created Dummy Transactions (TRX-PENDING-1 and TRX-CONFIRMED-1)');
+  // 5. Create Payment for Confirmed Transaction
+  const payment = await prisma.payment.upsert({
+    where: { id_transaction: trxConfirmed.id_transaction },
+    update: {},
+    create: {
+      id_transaction: trxConfirmed.id_transaction,
+      id_merchant: merchant.id_merchant,
+      amount: 8500,
+      method: 'STATIC_QRIS',
+      status: 'VERIFIED',
+      qris_code: 'DUMMY-QRIS-CODE',
+      verified_at: new Date(),
+    }
+  });
+
+  // 6. Create Reconciliation exception record for testing
+  const existingReconciliation = await prisma.reconciliation.findFirst({
+    where: { id_payment: payment.id_payment },
+  });
+
+  if (!existingReconciliation) {
+    await prisma.reconciliation.create({
+      data: {
+        id_payment: payment.id_payment,
+        reason: 'QRIS payment mismatch, customer transfer failed to settle',
+        evidence_note: 'https://supabase.co/storage/v1/object/public/k-pos-images/receipt.png',
+        opened_by: owner.id_user,
+        status: 'RESOLVED_INVALID',
+        resolved_by: owner.id_user,
+        resolution_note: 'Invalid payment, correction voided',
+        resolved_at: new Date(),
+      }
+    });
+  }
+
+  // 7. Create a dummy Transaction Correction (Immutable Bridge)
+  const trxOld = await prisma.transaction.upsert({
+    where: { id_transaction: 'TRX-OLD-1' },
+    update: {},
+    create: {
+      id_transaction: 'TRX-OLD-1',
+      id_merchant: merchant.id_merchant,
+      id_user: kasir.id_user,
+      id_device: device.id_device,
+      status: 'VOIDED',
+      sync_status: 'SYNCED',
+      subtotal: 5000,
+      total: 5000,
+      voided_at: new Date(),
+      voided_by: owner.id_user,
+      void_reason: 'Corrected. Reason: Customer double-billed. New transaction: TRX-NEW-1',
+    }
+  });
+
+  const trxNew = await prisma.transaction.upsert({
+    where: { id_transaction: 'TRX-NEW-1' },
+    update: {},
+    create: {
+      id_transaction: 'TRX-NEW-1',
+      id_merchant: merchant.id_merchant,
+      id_user: kasir.id_user,
+      id_device: device.id_device,
+      status: 'CONFIRMED',
+      sync_status: 'SYNCED',
+      subtotal: 3500,
+      total: 3500,
+    }
+  });
+
+  await prisma.transactionCorrection.upsert({
+    where: { id_new_transaction: trxNew.id_transaction },
+    update: {},
+    create: {
+      id_old_transaction: trxOld.id_transaction,
+      id_new_transaction: trxNew.id_transaction,
+      corrected_by: owner.id_user,
+      reason: 'Customer double-billed for tea, adjusted to indomie only',
+    }
+  });
+
+  console.log('Created Dummy Transactions, Payments, Reconciliations, and Corrections');
   console.log('Database seeding completed!');
 }
 

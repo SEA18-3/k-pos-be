@@ -1,16 +1,19 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
+import * as fs from 'fs';
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(cookieParser());
 
   // 1. Global API prefix (health & root excluded)
   const apiPrefix = process.env.API_PREFIX || '/api/v1';
@@ -43,6 +46,14 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
+  // Auto-save pretty-printed openapi.json in development
+  try {
+    fs.writeFileSync('./openapi.json', JSON.stringify(document, null, 2));
+    console.log('Spesifikasi OpenAPI yang rapi berhasil disimpan ke ./openapi.json');
+  } catch (err) {
+    console.warn('Gagal menyimpan file openapi.json:', err);
+  }
+
   // 6. CORS
   const corsOrigins = process.env.CORS_ORIGINS;
   if (!corsOrigins || corsOrigins === '*') {
@@ -74,12 +85,22 @@ async function bootstrap() {
 
   // 8. Start server
   const port = process.env.PORT || 3000;
-  await app.startAllMicroservices();
+
+  // Start RabbitMQ microservice — degraded mode if broker is unavailable
+  try {
+    await app.startAllMicroservices();
+    console.log(`RabbitMQ Worker is listening to 'sync.transactions'`);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[DEGRADED] RabbitMQ unavailable at startup: ${error}. HTTP API will start without consumer.`,
+    );
+  }
+
   await app.listen(port);
 
   console.log(`Application is running on: http://localhost:${port}`);
   console.log(`Swagger documentation is available at: http://localhost:${port}/docs`);
-  console.log(`RabbitMQ Worker is listening to 'sync.transactions'`);
 }
 
 bootstrap().catch((err) => {

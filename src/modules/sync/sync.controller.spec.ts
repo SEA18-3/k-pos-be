@@ -4,6 +4,8 @@ import { SyncProducerService } from './sync-producer.service';
 import { SyncBatchDto } from './dto/sync-batch.dto';
 import { PaymentMethod } from '../../../generated/prisma/client';
 
+import { SyncService } from './sync.service';
+
 describe('SyncController', () => {
   let controller: SyncController;
   let producerService: SyncProducerService;
@@ -16,6 +18,13 @@ describe('SyncController', () => {
           provide: SyncProducerService,
           useValue: {
             publishBatch: jest.fn(),
+          },
+        },
+        {
+          provide: SyncService,
+          useValue: {
+            getSyncStatus: jest.fn(),
+            validateBatch: jest.fn(),
           },
         },
       ],
@@ -35,7 +44,6 @@ describe('SyncController', () => {
         transactions: [
           {
             offline_uuid: 'uuid-1',
-            id_device: 'device-1',
             created_at_local: '2023-01-01T10:00:00Z',
             subtotal: 100,
             total: 100,
@@ -45,6 +53,9 @@ describe('SyncController', () => {
                 quantity: 1,
                 unit_price: 100,
                 subtotal: 100,
+                product_name: 'Kopi Susu',
+                sku_snapshot: 'KS-001',
+                catalog_version: '2023-01-01T00:00:00Z',
               },
             ],
             payment: {
@@ -55,9 +66,11 @@ describe('SyncController', () => {
         ],
       };
 
-      const result = await controller.syncTransactions(mockBatch);
+      const result = await controller.syncTransactions('device-1', mockBatch);
 
-      expect(producerService.publishBatch).toHaveBeenCalledWith(mockBatch.transactions);
+      expect(producerService.publishBatch).toHaveBeenCalledWith(
+        mockBatch.transactions.map((t) => ({ ...t, id_device: 'device-1' })),
+      );
       expect(result.message).toBe('Batch diterima dan sedang diproses');
       expect(result.data.accepted).toBe(1);
       expect(result.data.queued_at).toBeDefined();

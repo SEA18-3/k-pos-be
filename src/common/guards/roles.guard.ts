@@ -10,7 +10,7 @@ import { JwtPayload } from '../decorators/current-user.decorator';
  * Harus digunakan SETELAH JwtAuthGuard.
  * @example
  * @UseGuards(JwtAuthGuard, RolesGuard)
- * @Roles(Role.ADMIN)
+ * @Roles(Role.OWNER)
  * @Delete(':id')
  * remove() { ... }
  */
