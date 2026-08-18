@@ -30,6 +30,17 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout Repository
         # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
@@ -65,12 +76,23 @@ jobs:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/test_db?schema=public
           DIRECT_URL: postgresql://postgres:password@localhost:5432/test_db?schema=public
           JWT_SECRET: test-secret
+          RABBITMQ_URL: amqp://localhost:5672
+          PORT: 3000
         run: |
           npx prisma db push --accept-data-loss
+          npm run build
+          node dist/main.js &
+          echo "Waiting for server to be ready..."
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/api/v1/health && break
+            echo "Attempt $i: server not ready, retrying in 2s..."
+            sleep 2
+          done
           npm run test:e2e
 
       - name: Build Application
         run: npm run build
+
 
   semgrep:
     name: SAST Scan (Semgrep)
