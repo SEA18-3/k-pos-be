@@ -37,10 +37,7 @@ export class SyncService {
 
     const failedQueues = await this.prisma.syncQueue.findMany({
       where: {
-        OR: [
-          { offline_uuid: { in: offline_uuids } },
-          { id_transaction: { in: offline_uuids } },
-        ],
+        OR: [{ offline_uuid: { in: offline_uuids } }, { id_transaction: { in: offline_uuids } }],
       },
       select: { offline_uuid: true, id_transaction: true, status: true, last_error: true },
     });

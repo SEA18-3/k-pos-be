@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
 import { SyncConsumerService } from './sync-consumer.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -56,7 +55,7 @@ describe('SyncConsumerService', () => {
   });
 
   describe('handleSyncTransactionBatch', () => {
-    const mockTransactionPayload: any = {
+    const mockTransactionPayload: SyncTransactionDto & { id_device: string } = {
       offline_uuid: 'uuid-123',
       id_device: 'dev-1',
       created_at_local: '2023-01-01T10:00:00Z',
@@ -135,13 +134,26 @@ describe('SyncConsumerService', () => {
   });
 
   describe('handleDlq', () => {
-    const mockDlqPayload: any = {
+    const mockDlqPayload: SyncTransactionDto & {
+      id_device: string;
+      _retryAttempt?: number;
+    } = {
       offline_uuid: 'uuid-dlq-1',
       id_device: 'dev-1',
       created_at_local: '2023-01-01T10:00:00Z',
       subtotal: 100,
       total: 100,
-      items: [],
+      items: [
+        {
+          id_product: 'prod-1',
+          quantity: 1,
+          unit_price: 100,
+          subtotal: 100,
+          product_name: 'Test Product',
+          sku_snapshot: 'SKU-001',
+          catalog_version: '2023-01-01T00:00:00Z',
+        },
+      ],
       payment: { method: PaymentMethod.CASH, amount: 100 },
       _retryAttempt: 3,
     };

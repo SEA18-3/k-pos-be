@@ -40,11 +40,10 @@ describe('SyncController', () => {
 
   describe('syncTransactions', () => {
     it('should publish batch and return success message', async () => {
-      const mockBatch: any = {
+      const mockBatch: SyncBatchDto = {
         transactions: [
           {
             offline_uuid: 'uuid-1',
-            id_device: 'device-1',
             created_at_local: '2023-01-01T10:00:00Z',
             subtotal: 100,
             total: 100,
@@ -54,6 +53,9 @@ describe('SyncController', () => {
                 quantity: 1,
                 unit_price: 100,
                 subtotal: 100,
+                product_name: 'Kopi Susu',
+                sku_snapshot: 'KS-001',
+                catalog_version: '2023-01-01T00:00:00Z',
               },
             ],
             payment: {
