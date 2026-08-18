@@ -1,14 +1,14 @@
 import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ResolveReconciliationDto {
-  @ApiProperty({ description: 'Resolution status: VALID or INVALID' })
-  @IsEnum(['VALID', 'INVALID'])
-  @IsNotEmpty()
-  resolution: 'VALID' | 'INVALID';
-
-  @ApiProperty({ description: 'Optional notes on how it was resolved', required: false })
+  @ApiProperty({ description: 'Resolution note / explanation' })
   @IsString()
+  @IsNotEmpty()
+  resolution: string;
+
+  @ApiPropertyOptional({ enum: ['RESOLVED_VALID', 'RESOLVED_INVALID'], default: 'RESOLVED_VALID' })
+  @IsEnum(['RESOLVED_VALID', 'RESOLVED_INVALID'])
   @IsOptional()
-  notes?: string;
+  status?: 'RESOLVED_VALID' | 'RESOLVED_INVALID';
 }
