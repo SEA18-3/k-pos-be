@@ -104,6 +104,13 @@ export class UsersService {
       },
     });
 
+    // If user is being deactivated, revoke all their active sessions
+    if (dto.is_active === false) {
+      await this.prisma.refreshToken.deleteMany({
+        where: { id_user: targetUserId },
+      });
+    }
+
     return updatedUser;
   }
 }

@@ -5,6 +5,7 @@ import type { StringValue } from 'ms';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { Role } from '../../common/enums/role.enum';
 import * as crypto from 'crypto';
 
@@ -90,6 +91,19 @@ export class AuthService {
       expiresIn: '15m' as StringValue,
     });
 
+    // Generate offline lease JWT for OPERATOR role (7-day, for offline PWA use)
+    let offline_lease: string | undefined;
+    if (user.role === Role.OPERATOR) {
+      offline_lease = this.jwtService.sign(
+        {
+          ...payload,
+          merchant_name: (await this.prisma.merchant.findUnique({ where: { id_merchant: user.id_merchant! }, select: { name: true } }))?.name,
+          type: 'offline_lease',
+        },
+        { expiresIn: '7d' as StringValue },
+      );
+    }
+
     const refresh_token = crypto.randomBytes(40).toString('hex');
     const expires_at = new Date();
     expires_at.setDate(expires_at.getDate() + 7); // 7 days
@@ -105,6 +119,7 @@ export class AuthService {
     return {
       access_token,
       refresh_token,
+      ...(offline_lease ? { offline_lease } : {}),
       user: {
         id_user: user.id_user,
         full_name: user.full_name,
@@ -185,5 +200,31 @@ export class AuthService {
       },
     });
     return { user };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id_user: userId },
+    });
+
+    const isMatch = await bcrypt.compare(dto.current_password, user.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const hashedNew = await bcrypt.hash(dto.new_password, 10);
+
+    // Update password and invalidate ALL sessions (force re-login on all devices)
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id_user: userId },
+        data: { password: hashedNew },
+      }),
+      this.prisma.refreshToken.deleteMany({
+        where: { id_user: userId },
+      }),
+    ]);
+
+    return { success: true, message: 'Password changed. Please log in again.' };
   }
 }

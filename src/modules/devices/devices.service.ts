@@ -124,6 +124,14 @@ export class DevicesService {
       },
     });
 
+    // Revoke all refresh tokens for the user associated with this device
+    // to force them to log in again if their device was revoked.
+    if (device.id_user) {
+      await this.prisma.refreshToken.deleteMany({
+        where: { id_user: device.id_user },
+      });
+    }
+
     return updatedDevice;
   }
 }

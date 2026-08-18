@@ -23,6 +23,10 @@ describe('AuthService', () => {
       findUnique: jest.fn(),
       create: jest.fn(),
       findUniqueOrThrow: jest.fn(),
+      update: jest.fn(),
+    },
+    merchant: {
+      findUnique: jest.fn().mockResolvedValue({ name: 'Test Merchant' }),
     },
     refreshToken: {
       create: jest.fn(),
@@ -106,11 +110,13 @@ describe('AuthService', () => {
 
       (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (prisma.merchant.findUnique as jest.Mock).mockResolvedValue({ name: 'Test Merchant' });
 
       const result = await service.login({ email: 'test@test.com', password: 'password' });
 
       expect(result).toHaveProperty('access_token');
       expect(result).toHaveProperty('refresh_token');
+      expect(result).toHaveProperty('offline_lease'); // OPERATOR gets offline lease
       expect(result.user.email).toBe('test@test.com');
       expect(prisma.refreshToken.create).toHaveBeenCalled();
     });
