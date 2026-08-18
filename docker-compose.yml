@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: kpos-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: kpos-secret
+      POSTGRES_DB: kpos_db
+    ports:
+      - '5432:5432'
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    volumes:
+      - kpos-pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # 2. RabbitMQ Message Broker (dengan Management Plugin)
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: kpos-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - '5672:5672' # AMQP protocol port
+      - '15672:15672' # Management UI port (http://localhost:15672)
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /var/run/rabbitmq
+      - /var/log/rabbitmq
+      - /var/lib/rabbitmq/mnesia
+    volumes:
+      - kpos-rmq-data:/var/lib/rabbitmq
+    restart: unless-stopped
+
+volumes:
+  kpos-pg-data:
+  kpos-rmq-data:

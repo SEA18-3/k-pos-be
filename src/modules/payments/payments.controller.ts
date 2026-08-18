@@ -1,34 +1,86 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiParam,
+} from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto } from './dto/create-payment.dto';
-import { UpdatePaymentDto } from './dto/update-payment.dto';
+import type { PaymentStatusFilter } from './payments.service';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { CreateReconciliationDto } from '../reconciliations/dto/create-reconciliation.dto';
 
+@ApiTags('Payments')
 @Controller('payments')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
-  @Post()
-  create(@Body() createPaymentDto: CreatePaymentDto) {
-    return this.paymentsService.create(createPaymentDto);
-  }
-
   @Get()
-  findAll() {
-    return this.paymentsService.findAll();
+  @Roles('OWNER')
+  @ApiOperation({
+    summary: 'Daftar pembayaran merchant (filter status opsional)',
+    description:
+      'Mengembalikan semua pembayaran untuk merchant yang terautentikasi. Memerlukan role Owner.',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['VERIFIED', 'FAILED'],
+    description: 'Filter berdasarkan status pembayaran',
+  })
+  @ApiResponse({ status: 200, description: 'Daftar pembayaran berhasil dikembalikan' })
+  @ApiResponse({ status: 401, description: 'Tidak terotorisasi' })
+  @ApiResponse({ status: 403, description: 'Dilarang — Memerlukan role Owner' })
+  async findAll(@CurrentUser() user: JwtPayload, @Query('status') status?: PaymentStatusFilter) {
+    return this.paymentsService.findAll(user, status);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.paymentsService.findOne(+id);
+  @Roles('OWNER')
+  @ApiOperation({ summary: 'Ambil data pembayaran tunggal berdasarkan ID' })
+  @ApiParam({ name: 'id', description: 'ID Pembayaran' })
+  @ApiResponse({ status: 200, description: 'Pembayaran berhasil dikembalikan' })
+  @ApiResponse({ status: 404, description: 'Pembayaran tidak ditemukan' })
+  async findOne(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.paymentsService.findOne(user, id);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updatePaymentDto: UpdatePaymentDto) {
-    return this.paymentsService.update(+id, updatePaymentDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.paymentsService.remove(+id);
+  @Post(':id/reconcile')
+  @Roles('OWNER')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Buka kasus rekonsiliasi untuk pembayaran',
+    description:
+      'Membuka kasus rekonsiliasi baru dengan status OPEN untuk pembayaran yang diberikan. ' +
+      'Gunakan POST /reconciliations/:id/resolve untuk menyelesaikannya.',
+  })
+  @ApiParam({ name: 'id', description: 'ID Pembayaran yang akan direkonsiliasi' })
+  @ApiResponse({ status: 201, description: 'Kasus rekonsiliasi berhasil dibuat' })
+  @ApiResponse({ status: 400, description: 'Sudah memiliki kasus rekonsiliasi yang terbuka' })
+  @ApiResponse({ status: 404, description: 'Pembayaran tidak ditemukan' })
+  async reconcile(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateReconciliationDto,
+  ) {
+    return this.paymentsService.reconcile(user, id, dto);
   }
 }

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -11,9 +12,13 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { HealthModule } from './modules/health/health.module';
+import { StorageModule } from './storage/storage.module';
+import { ReconciliationsModule } from './modules/reconciliations/reconciliations.module';
 
 @Module({
   imports: [
+    // Harus ada di paling atas agar env sudah tersedia sebelum module lain init
+    ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -24,6 +29,8 @@ import { HealthModule } from './modules/health/health.module';
     PaymentsModule,
     SyncModule,
     HealthModule,
+    StorageModule,
+    ReconciliationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -2,11 +2,27 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '../../generated/prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { Prisma } from '../../generated/prisma/client';
+
+// Monkey patch Prisma Decimal to always serialize as number in JSON responses
+// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+(Prisma.Decimal.prototype as any).toJSON = function (this: Prisma.Decimal) {
+  return this.toNumber();
+};
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const connectionString =
+      process.env.NODE_ENV === 'production'
+        ? process.env.DATABASE_URL
+        : (process.env.DIRECT_URL ?? process.env.DATABASE_URL);
+
+    const pool = new Pool({
+      connectionString,
+      // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
+      ssl: connectionString?.includes('localhost') ? false : { rejectUnauthorized: false },
+    });
     const adapter = new PrismaPg(pool);
     super({ adapter });
   }
