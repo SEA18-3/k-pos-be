@@ -21,20 +21,20 @@ export class SyncPaymentDto {
   @IsEnum(PaymentMethod)
   method: PaymentMethod;
 
-  @ApiProperty({ example: 30000, description: 'Total amount to be paid' })
-  @IsNumber()
+  @ApiProperty({ example: 30000, description: 'Total amount to be paid (integer rupiah)' })
+  @IsInt()
   @Min(0)
   amount: number;
 
-  @ApiPropertyOptional({ example: 50000, description: 'Amount of cash received from customer' })
+  @ApiPropertyOptional({ example: 50000, description: 'Amount of cash received (integer rupiah)' })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(0)
   cash_received?: number;
 
-  @ApiPropertyOptional({ example: 20000, description: 'Change amount given to customer' })
+  @ApiPropertyOptional({ example: 20000, description: 'Change amount given (integer rupiah)' })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(0)
   change_amount?: number;
 
@@ -63,13 +63,13 @@ export class SyncItemDto {
   @Min(1)
   quantity: number;
 
-  @ApiProperty({ example: 15000, description: 'Price per unit at the time of transaction' })
-  @IsNumber()
+  @ApiProperty({ example: 15000, description: 'Price per unit (integer rupiah)' })
+  @IsInt()
   @Min(0)
   unit_price: number;
 
-  @ApiProperty({ example: 30000, description: 'Subtotal for this item (quantity * unit_price)' })
-  @IsNumber()
+  @ApiProperty({ example: 30000, description: 'Subtotal for this item (integer rupiah)' })
+  @IsInt()
   @Min(0)
   subtotal: number;
 
@@ -109,16 +109,16 @@ export class SyncTransactionDto {
   @IsNotEmpty()
   created_at_local: string;
 
-  @ApiProperty({ example: 30000, description: 'Subtotal of all items' })
-  @IsNumber()
+  @ApiProperty({ example: 30000, description: 'Subtotal of all items (integer rupiah)' })
+  @IsInt()
   @Min(0)
   subtotal: number;
 
   @ApiProperty({
     example: 30000,
-    description: 'Total after discounts/taxes (currently same as subtotal)',
+    description: 'Total after discounts/taxes (integer rupiah)',
   })
-  @IsNumber()
+  @IsInt()
   @Min(0)
   total: number;
 

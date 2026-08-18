@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SyncStatus, TransactionStatus, PaymentStatus } from '../../../generated/prisma/client';
 import { SyncProducerService } from './sync-producer.service';
 import * as amqp from 'amqp-connection-manager';
+import * as crypto from 'crypto';
 
 /** RabbitMQ channel interface (channel-api). */
 interface RmqChannel {
@@ -100,8 +101,19 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         });
 
         if (existing) {
-          this.logger.log(`Transaction ${data.offline_uuid} already exists. Skipping.`);
-          continue;
+          const payloadString = JSON.stringify({ items: data.items, payment: data.payment });
+          const currentHash = crypto.createHash('sha256').update(payloadString).digest('hex');
+
+          if (existing.payload_hash === null || existing.payload_hash === currentHash) {
+            this.logger.log(
+              `Transaction ${data.offline_uuid} already exists and matches. Idempotent success.`,
+            );
+            continue;
+          } else {
+            throw new Error(
+              'IDEMPOTENCY_PAYLOAD_MISMATCH: Payload content differs from previously synced transaction.',
+            );
+          }
         }
 
         await this.processTransaction(data);
@@ -196,6 +208,12 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
   private async processTransaction(
     data: SyncTransactionDto & { id_device: string },
   ): Promise<void> {
+    // Compute canonical payload hash from the message data received from the queue.
+    // This must be done here (consumer side) because the hash is not serialized
+    // into the RabbitMQ message — it is computed fresh from items + payment.
+    const payloadString = JSON.stringify({ items: data.items, payment: data.payment });
+    const payloadHash = crypto.createHash('sha256').update(payloadString).digest('hex');
+
     await this.prisma.$transaction(async (tx) => {
       let hasConflict = false;
 
@@ -254,14 +272,14 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         throw new Error(`Device ${data.id_device} not found.`);
       }
 
-      // 4. Create Transaction header
+      // 4. Create Transaction header (payload_hash computed from message data for idempotency)
       const newTx = await tx.transaction.create({
         data: {
           id_merchant: device.id_merchant,
           id_user: device.id_user,
           id_device: data.id_device,
           offline_uuid: data.offline_uuid,
-          payload_hash: (data as Partial<{ payload_hash: string }>).payload_hash ?? null,
+          payload_hash: payloadHash,
           subtotal: data.subtotal,
           total: data.total,
           created_at_local: new Date(data.created_at_local),
