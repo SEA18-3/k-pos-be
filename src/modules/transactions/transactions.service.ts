@@ -133,7 +133,9 @@ export class TransactionsService {
     const originalTx = await this.findOne(user, id);
 
     if (originalTx.status !== TransactionStatus.CONFIRMED) {
-      throw new BadRequestException(`Only CONFIRMED transactions can be corrected.`);
+      throw new BadRequestException(
+        `Only CONFIRMED transactions can be corrected. Current status: ${originalTx.status}`,
+      );
     }
 
     return await this.prisma.$transaction(async (tx) => {
