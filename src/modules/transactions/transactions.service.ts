@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryTransactionsDto } from './dto/query-transactions.dto';
 import { VoidTransactionDto } from './dto/void-transaction.dto';
@@ -38,7 +37,9 @@ export class TransactionsService {
       take: limit + 1,
       cursor: cursor ? { id_transaction: cursor } : undefined,
       orderBy: { created_at: 'desc' },
-      include: { details: true, payment: true },
+      include: { details: true,
+        payment: true,
+      },
     });
 
     let next_cursor: string | null = null;
@@ -57,9 +58,10 @@ export class TransactionsService {
   }
 
   async findOne(user: JwtPayload, id: string) {
-    const transaction = await this.prisma.transaction.findFirst({
-      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
-      include: { details: true, payment: true },
+    const transaction = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+      include: { details: true,
+        payment: true,
+      },
     });
 
     if (!transaction || transaction.id_merchant !== user.id_merchant) {
@@ -100,8 +102,7 @@ export class TransactionsService {
 
   async resolveConflict(user: JwtPayload, id: string, dto: ResolveConflictDto) {
     // 1. Ambil transaksi beserta detail dan payment-nya
-    const transaction = await this.prisma.transaction.findFirst({
-      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+    const transaction = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
       include: { details: true, payment: true },
     });
 
@@ -185,18 +186,12 @@ export class TransactionsService {
 
   async correctTransaction(user: JwtPayload, id: string, dto: CorrectTransactionDto) {
     // 1. Ambil transaksi asli beserta semua relasinya
-    const originalTx = await this.prisma.transaction.findFirst({
-      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+    const originalTx = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
       include: { details: true, payment: true },
     });
 
-    if (!originalTx) {
-      throw new NotFoundException(`Transaction with ID ${id} not found in DB`);
-    }
-    if (originalTx.id_merchant !== user.id_merchant) {
-      throw new NotFoundException(
-        `Merchant mismatch: ${originalTx.id_merchant} vs ${user.id_merchant}`,
-      );
+    if (!originalTx) throw new NotFoundException(`Transaction with ID ${id} not found in DB`); if (originalTx.id_merchant !== user.id_merchant) throw new NotFoundException(`Merchant mismatch: ${originalTx.id_merchant} vs ${user.id_merchant}`); if (false) {
+      throw new NotFoundException(`Transaction with ID ${id} not found`);
     }
 
     // 2. Hanya transaksi CONFIRMED yang bisa dikoreksi
@@ -234,7 +229,6 @@ export class TransactionsService {
           id_merchant: originalTx.id_merchant,
           id_user: originalTx.id_user,
           id_device: originalTx.id_device,
-          offline_uuid: randomUUID(),
           subtotal: dto.subtotal,
           total: dto.total,
           notes: dto.notes ?? originalTx.notes,
@@ -253,7 +247,6 @@ export class TransactionsService {
           quantity: item.quantity,
           unit_price: item.unit_price,
           subtotal: item.subtotal,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
           product_name: (item as any).product_name ?? 'Correction',
           sku_snapshot: 'NONE',
           catalog_version: new Date(),
