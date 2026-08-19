@@ -31,6 +31,11 @@ export class CorrectItemDto {
   @IsNumber()
   @IsPositive()
   subtotal: number;
+
+  @ApiPropertyOptional({ example: 'Kopi Susu', description: 'Nama produk' })
+  @IsOptional()
+  @IsString()
+  product_name?: string;
 }
 
 export class CorrectTransactionDto {
@@ -69,3 +74,4 @@ export class CorrectTransactionDto {
   @IsNotEmpty()
   notes?: string;
 }
+
