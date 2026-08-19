@@ -194,9 +194,6 @@ export class TransactionsService {
       throw new NotFoundException(
         `Merchant mismatch: ${originalTx.id_merchant} vs ${user.id_merchant}`,
       );
-    if (false) {
-      throw new NotFoundException(`Transaction with ID ${id} not found`);
-    }
 
     // 2. Hanya transaksi CONFIRMED yang bisa dikoreksi
     if (originalTx.status !== TransactionStatus.CONFIRMED) {
@@ -251,6 +248,7 @@ export class TransactionsService {
           quantity: item.quantity,
           unit_price: item.unit_price,
           subtotal: item.subtotal,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
           product_name: (item as any).product_name ?? 'Correction',
           sku_snapshot: 'NONE',
           catalog_version: new Date(),
@@ -367,8 +365,14 @@ export class TransactionsService {
 
       if (!tx) break;
 
-      const nextCorrection = await this.prisma.transactionCorrection.findFirst({
+      const nextCorrection: {
+        id_new_transaction: string;
+        reason: string;
+        created_at: Date;
+        corrected_by: string;
+      } | null = await this.prisma.transactionCorrection.findFirst({
         where: { id_old_transaction: currentId },
+        select: { id_new_transaction: true, reason: true, created_at: true, corrected_by: true },
       });
 
       history.push({
@@ -376,7 +380,7 @@ export class TransactionsService {
         correction_metadata: nextCorrection
           ? {
               reason: nextCorrection.reason,
-              corrected_at: nextCorrection.corrected_at,
+              corrected_at: nextCorrection.created_at,
               corrected_by: nextCorrection.corrected_by,
             }
           : null,
