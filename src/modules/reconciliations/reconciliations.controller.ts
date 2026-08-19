@@ -76,4 +76,19 @@ export class ReconciliationsController {
   ) {
     return this.reconciliationsService.resolve(id, user, resolveDto);
   }
+
+  @Get('payment/:id_payment')
+  @Roles(Role.OWNER, Role.OPERATOR)
+  @ApiOperation({
+    summary: 'Riwayat rekonsiliasi pembayaran',
+    description: 'Mengambil riwayat seluruh kasus rekonsiliasi untuk satu ID pembayaran.',
+  })
+  @ApiResponse({ status: 200, description: 'Riwayat berhasil diambil.' })
+  @ApiResponse({ status: 404, description: 'Payment tidak ditemukan atau unauthorized.' })
+  getPaymentReconciliations(
+    @Param('id_payment') id_payment: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.reconciliationsService.getPaymentReconciliations(user, id_payment);
+  }
 }

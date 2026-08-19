@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SyncStatus } from '../../../generated/prisma/client';
 import * as crypto from 'crypto';
 import { SyncBatchDto } from './dto/sync-batch.dto';
+import type { JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
 export class SyncService {
@@ -70,5 +71,20 @@ export class SyncService {
     });
 
     return { data: results };
+  }
+
+  async getFailedSyncQueues(user: JwtPayload) {
+    const failedQueues = await this.prisma.syncQueue.findMany({
+      where: {
+        status: { in: ['SYNC_FAILED', 'SYNC_CONFLICT'] },
+        device: { id_merchant: user.id_merchant },
+      },
+      orderBy: { updated_at: 'desc' },
+      include: {
+        device: { select: { name: true } },
+      },
+    });
+
+    return failedQueues;
   }
 }
