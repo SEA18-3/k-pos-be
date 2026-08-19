@@ -2,9 +2,15 @@ import { Controller, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { SyncItemDto, SyncTransactionDto } from './dto/sync-batch.dto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SyncStatus, TransactionStatus, PaymentStatus } from '../../../generated/prisma/client';
+import {
+  SyncStatus,
+  TransactionStatus,
+  PaymentStatus,
+  Prisma,
+} from '../../../generated/prisma/client';
 import { SyncProducerService } from './sync-producer.service';
 import { SyncConflictException } from '../../common/exceptions/sync-conflict.exception';
+import { adjustInventoryAndHistory } from '../../common/utils/inventory.util';
 import * as amqp from 'amqp-connection-manager';
 
 /** RabbitMQ channel interface (channel-api). */
@@ -145,87 +151,53 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         this.logger.error(
           `Transaction ${data.offline_uuid} permanently failed after ${MAX_RETRIES} retries.`,
         );
-        try {
-          const existingEntry = await this.prisma.syncQueue.findFirst({
-            where: { id_device: data.id_device, offline_uuid: data.offline_uuid },
-          });
-          if (existingEntry) {
-            await this.prisma.syncQueue.update({
-              where: { id: existingEntry.id },
-              data: {
-                status: SyncStatus.SYNC_FAILED,
-                last_error: `Exceeded ${MAX_RETRIES} retry attempts`,
-                updated_at: new Date(),
-              },
-            });
-          } else {
-            await this.prisma.syncQueue.create({
-              data: {
-                id_device: data.id_device,
-                id_transaction: null, // No Transaction row — permanently failed before DB write
-                offline_uuid: data.offline_uuid,
-                operation: 'SYNC_BATCH_PERMANENTLY_FAILED',
-                payload: JSON.stringify(data),
-                last_error: `Exceeded ${MAX_RETRIES} retry attempts`,
-                status: SyncStatus.SYNC_FAILED,
-              },
-            });
-          }
-        } catch (dbErr: unknown) {
-          const e = dbErr instanceof Error ? dbErr.message : String(dbErr);
-          this.logger.error(`Failed to persist terminal failure for ${data.offline_uuid}: ${e}`);
-        }
+        await this.recordTerminalFailure(data);
       }
     }
   }
+
+  private async recordTerminalFailure(data: SyncTransactionDto & { id_device: string }) {
+    try {
+      const existingEntry = await this.prisma.syncQueue.findFirst({
+        where: { id_device: data.id_device, offline_uuid: data.offline_uuid },
+      });
+      if (existingEntry) {
+        await this.prisma.syncQueue.update({
+          where: { id: existingEntry.id },
+          data: {
+            status: SyncStatus.SYNC_FAILED,
+            last_error: `Exceeded ${MAX_RETRIES} retry attempts`,
+            updated_at: new Date(),
+          },
+        });
+      } else {
+        await this.prisma.syncQueue.create({
+          data: {
+            id_device: data.id_device,
+            id_transaction: null,
+            offline_uuid: data.offline_uuid,
+            operation: 'SYNC_BATCH_PERMANENTLY_FAILED',
+            payload: JSON.stringify(data),
+            last_error: `Exceeded ${MAX_RETRIES} retry attempts`,
+            status: SyncStatus.SYNC_FAILED,
+          },
+        });
+      }
+    } catch (dbErr: unknown) {
+      const e = dbErr instanceof Error ? dbErr.message : String(dbErr);
+      this.logger.error(`Failed to persist terminal failure for ${data.offline_uuid}: ${e}`);
+    }
+  }
+
+  /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
 
   private async processTransaction(
     data: SyncTransactionDto & { id_device: string },
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      let hasConflict = false;
+      this.validateArithmetic(data);
 
-      let calculatedSubtotal = 0;
-      for (const item of data.items) {
-        if (Number(item.quantity) * Number(item.unit_price) !== Number(item.subtotal)) {
-          throw new SyncConflictException(
-            'SYNC_ARITHMETIC_ERROR',
-            `Arithmetic validation failed for item ${item.id_product}: ` +
-              `${item.quantity} * ${item.unit_price} != ${item.subtotal}`,
-          );
-        }
-        calculatedSubtotal += Number(item.subtotal);
-      }
-      if (
-        calculatedSubtotal !== Number(data.subtotal) ||
-        calculatedSubtotal !== Number(data.total)
-      ) {
-        throw new SyncConflictException(
-          'SYNC_ARITHMETIC_ERROR',
-          `Arithmetic validation failed: calculated ${calculatedSubtotal} != tx total ${data.total}`,
-        );
-      }
-
-      for (const item of data.items) {
-        const inventoryData = await tx.$queryRaw<InventoryData[]>`
-          SELECT i.current_stock, p.is_active
-          FROM "Inventory" i
-          JOIN "Product" p ON p.id_product = i.id_product
-          WHERE i.id_product = ${item.id_product}
-          FOR UPDATE
-        `;
-
-        if (!inventoryData || inventoryData.length === 0) {
-          hasConflict = true;
-          break;
-        }
-
-        const inv = inventoryData[0];
-        if (!inv.is_active || inv.current_stock < item.quantity) {
-          hasConflict = true;
-          break;
-        }
-      }
+      const hasConflict = await this.checkStockAvailability(tx, data.items);
 
       const finalStatus = hasConflict ? TransactionStatus.PENDING : TransactionStatus.CONFIRMED;
       const finalSyncStatus = hasConflict ? SyncStatus.SYNC_CONFLICT : SyncStatus.SYNCED;
@@ -242,72 +214,149 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      const newTx = await tx.transaction.create({
-        data: {
-          id_merchant: device.id_merchant,
-          id_user: device.id_user,
-          id_device: data.id_device,
-          offline_uuid: data.offline_uuid,
-          payload_hash: (data as Partial<{ payload_hash: string }>).payload_hash ?? null,
-          subtotal: data.subtotal,
-          total: data.total,
-          created_at_local: new Date(data.created_at_local),
-          notes: data.notes,
-          status: finalStatus,
-          sync_status: finalSyncStatus,
-          synced_at: new Date(),
-          confirmed_at: hasConflict ? null : new Date(),
-        },
-      });
+      const newTx = await this.createTransactionHeader(
+        tx,
+        data,
+        device,
+        finalStatus,
+        finalSyncStatus,
+        hasConflict,
+      );
 
-      await tx.detailTransaction.createMany({
-        data: data.items.map((item: SyncItemDto) => ({
-          id_transaction: newTx.id_transaction,
-          id_product: item.id_product,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          subtotal: item.subtotal,
-          product_name: item.product_name,
-          sku_snapshot: item.sku_snapshot,
-          catalog_version: item.catalog_version ? new Date(item.catalog_version) : new Date(),
-        })),
-      });
+      await this.createTransactionDetails(tx, newTx.id_transaction, data.items);
 
-      await tx.payment.create({
-        data: {
-          id_transaction: newTx.id_transaction,
-          id_merchant: device.id_merchant,
-          amount: data.payment.amount,
-          method: data.payment.method,
-          cash_received: data.payment.cash_received,
-          change_amount: data.payment.change_amount,
-          qris_code: data.payment.qris_code,
-          transfer_ref: data.payment.transfer_ref,
-          status: PaymentStatus.VERIFIED,
-          verified_at: new Date(),
-        },
-      });
+      await this.createPayment(tx, newTx.id_transaction, device.id_merchant, data.payment);
 
       if (!hasConflict) {
-        for (const item of data.items) {
-          await tx.inventory.update({
-            where: { id_product: item.id_product },
-            data: { current_stock: { decrement: item.quantity } },
-          });
-
-          await tx.stockHistory.create({
-            data: {
-              id_product: item.id_product,
-              id_merchant: device.id_merchant,
-              id_transaction: newTx.id_transaction,
-              movement_type: 'SALE',
-              quantity: -item.quantity,
-              notes: `Sold via offline sync (device: ${data.id_device})`,
-            },
-          });
-        }
+        await this.deductInventory(tx, data, newTx.id_transaction, device.id_merchant);
       }
     });
+  }
+
+  private validateArithmetic(data: SyncTransactionDto) {
+    let calculatedSubtotal = 0;
+    for (const item of data.items) {
+      if (Number(item.quantity) * Number(item.unit_price) !== Number(item.subtotal)) {
+        throw new SyncConflictException(
+          'SYNC_ARITHMETIC_ERROR',
+          `Arithmetic validation failed for item ${item.id_product}: ${item.quantity} * ${item.unit_price} != ${item.subtotal}`,
+        );
+      }
+      calculatedSubtotal += Number(item.subtotal);
+    }
+    if (calculatedSubtotal !== Number(data.subtotal) || calculatedSubtotal !== Number(data.total)) {
+      throw new SyncConflictException(
+        'SYNC_ARITHMETIC_ERROR',
+        `Arithmetic validation failed: calculated ${calculatedSubtotal} != tx total ${data.total}`,
+      );
+    }
+  }
+
+  private async checkStockAvailability(
+    tx: Prisma.TransactionClient,
+    items: SyncItemDto[],
+  ): Promise<boolean> {
+    for (const item of items) {
+      const inventoryData = await tx.$queryRaw<InventoryData[]>`
+        SELECT i.current_stock, p.is_active
+        FROM "Inventory" i
+        JOIN "Product" p ON p.id_product = i.id_product
+        WHERE i.id_product = ${item.id_product}
+        FOR UPDATE
+      `;
+
+      if (!inventoryData || inventoryData.length === 0) return true; // Conflict
+      const inv = inventoryData[0];
+      if (!inv.is_active || inv.current_stock < item.quantity) return true; // Conflict
+    }
+    return false;
+  }
+
+  private async createTransactionHeader(
+    tx: Prisma.TransactionClient,
+    data: SyncTransactionDto & { id_device: string },
+    device: any,
+    status: TransactionStatus,
+    syncStatus: SyncStatus,
+    hasConflict: boolean,
+  ) {
+    return await tx.transaction.create({
+      data: {
+        id_merchant: device.id_merchant,
+        id_user: device.id_user,
+        id_device: data.id_device,
+        offline_uuid: data.offline_uuid,
+        payload_hash: (data as Partial<{ payload_hash: string }>).payload_hash ?? null,
+        subtotal: data.subtotal,
+        total: data.total,
+        created_at_local: new Date(data.created_at_local),
+        notes: data.notes,
+        status: status,
+        sync_status: syncStatus,
+        synced_at: new Date(),
+        confirmed_at: hasConflict ? null : new Date(),
+      },
+    });
+  }
+
+  private async createTransactionDetails(
+    tx: Prisma.TransactionClient,
+    txId: string,
+    items: SyncItemDto[],
+  ) {
+    await tx.detailTransaction.createMany({
+      data: items.map((item) => ({
+        id_transaction: txId,
+        id_product: item.id_product,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        subtotal: item.subtotal,
+        product_name: item.product_name,
+        sku_snapshot: item.sku_snapshot,
+        catalog_version: item.catalog_version ? new Date(item.catalog_version) : new Date(),
+      })),
+    });
+  }
+
+  private async createPayment(
+    tx: Prisma.TransactionClient,
+    txId: string,
+    merchantId: string,
+    payment: any,
+  ) {
+    await tx.payment.create({
+      data: {
+        id_transaction: txId,
+        id_merchant: merchantId,
+        amount: payment.amount,
+        method: payment.method,
+        cash_received: payment.cash_received,
+        change_amount: payment.change_amount,
+        qris_code: payment.qris_code,
+        transfer_ref: payment.transfer_ref,
+        status: PaymentStatus.VERIFIED,
+        verified_at: new Date(),
+      },
+    });
+  }
+
+  private async deductInventory(
+    tx: Prisma.TransactionClient,
+    data: SyncTransactionDto & { id_device: string },
+    txId: string,
+    merchantId: string,
+  ) {
+    for (const item of data.items) {
+      await adjustInventoryAndHistory(tx, {
+        id_product: item.id_product,
+        id_merchant: merchantId,
+        id_user: 'system_sync',
+        id_transaction: txId,
+        quantity_change: -item.quantity,
+        movement_type: 'SALE',
+        notes: `Sold via offline sync (device: ${data.id_device})`,
+      });
+    }
   }
 
   /** On per-item failure: record to SyncQueue pseudo-DLQ for traceability. */

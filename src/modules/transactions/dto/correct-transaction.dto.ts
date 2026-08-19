@@ -74,4 +74,3 @@ export class CorrectTransactionDto {
   @IsNotEmpty()
   notes?: string;
 }
-
