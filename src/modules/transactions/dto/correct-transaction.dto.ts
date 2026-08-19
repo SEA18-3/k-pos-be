@@ -5,6 +5,8 @@ import {
   IsNotEmpty,
   IsNumber,
   IsPositive,
+  IsOptional,
+  IsOptional,
   IsString,
   MinLength,
   ValidateNested,
@@ -63,6 +65,8 @@ export class CorrectTransactionDto {
   total: number;
 
   @ApiPropertyOptional({ example: 'Transfer BCA', description: 'Catatan tambahan koreksi' })
+  @IsOptional()
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   notes?: string;
