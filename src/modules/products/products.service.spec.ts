@@ -79,16 +79,10 @@ describe('ProductsService', () => {
 
       (prisma.$transaction as jest.Mock).mockImplementation((cb: (tx: any) => Promise<any>) => {
         const tx = {
-          inventory: {
-            update: jest.fn().mockResolvedValue({ current_stock: 15 }),
-            findUnique: jest.fn().mockResolvedValue({ current_stock: 15 }),
-          },
-          stockHistory: {
-            create: jest.fn().mockResolvedValue({ id_stock: 'stk1' }),
-            findFirst: jest.fn().mockResolvedValue({ id_stock: 'stk1' }),
-          },
+          inventory: { update: jest.fn().mockResolvedValue({ current_stock: 15 }) },
+          stockHistory: { create: jest.fn().mockResolvedValue({ id_stock: 'stk1' }) },
         };
-        return cb(tx);
+        return cb(tx) as unknown;
       });
 
       const result = await service.adjustStock(mockUser, 'p1', { quantity: 10 });

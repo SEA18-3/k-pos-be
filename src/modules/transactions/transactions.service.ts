@@ -4,14 +4,8 @@ import { QueryTransactionsDto } from './dto/query-transactions.dto';
 import { VoidTransactionDto } from './dto/void-transaction.dto';
 import { ResolveConflictDto } from './dto/resolve-conflict.dto';
 import { CorrectTransactionDto } from './dto/correct-transaction.dto';
-import {
-  Prisma,
-  SyncStatus,
-  TransactionStatus,
-  Transaction,
-} from '../../../generated/prisma/client';
+import { Prisma, SyncStatus, TransactionStatus } from '../../../generated/prisma/client';
 import type { JwtPayload } from '../../common/decorators/current-user.decorator';
-import { adjustInventoryAndHistory } from '../../common/utils/inventory.util';
 
 @Injectable()
 export class TransactionsService {
@@ -28,7 +22,10 @@ export class TransactionsService {
     if (sync_status) where.sync_status = sync_status;
     if (id_device) where.id_device = id_device;
     if (start_date && end_date) {
-      where.created_at = { gte: new Date(start_date), lte: new Date(end_date) };
+      where.created_at = {
+        gte: new Date(start_date),
+        lte: new Date(end_date),
+      };
     } else if (start_date) {
       where.created_at = { gte: new Date(start_date) };
     } else if (end_date) {
@@ -51,7 +48,10 @@ export class TransactionsService {
 
     return {
       data: transactions,
-      meta: { next_cursor, limit },
+      meta: {
+        next_cursor,
+        limit,
+      },
     };
   }
 
@@ -98,22 +98,72 @@ export class TransactionsService {
   }
 
   async resolveConflict(user: JwtPayload, id: string, dto: ResolveConflictDto) {
-    const transaction = await this.findOne(user, id);
+    // 1. Ambil transaksi beserta detail dan payment-nya
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+      include: { details: true, payment: true },
+    });
 
+    if (!transaction || transaction.id_merchant !== user.id_merchant) {
+      throw new NotFoundException(`Transaction with ID ${id} not found`);
+    }
+
+    // 2. Hanya transaksi berstatus SYNC_CONFLICT yang boleh di-resolve
     if (transaction.sync_status !== SyncStatus.SYNC_CONFLICT) {
-      throw new BadRequestException(`Transaction is not in SYNC_CONFLICT state.`);
+      throw new BadRequestException(
+        `Transaction is not in SYNC_CONFLICT state. Current sync_status: ${transaction.sync_status}`,
+      );
     }
 
     if (dto.action === 'CONFIRM') {
+      // 3a. CONFIRM: Konfirmasi paksa — potong stok meski hasilnya negatif
+      //     (barang secara fisik sudah diberikan ke pelanggan)
       return await this.prisma.$transaction(async (tx) => {
-        await this.forceResolveInventory(tx, transaction, user.sub, dto.notes);
+        for (const detail of transaction.details) {
+          // Potong stok, biarkan menjadi negatif sebagai sinyal ketidaksesuaian
+          await tx.inventory.update({
+            where: { id_product: detail.id_product },
+            data: { current_stock: { decrement: detail.quantity } },
+          });
 
-        const resolved = await this.markAsConfirmed(tx, transaction.id_transaction);
+          // Catat pergerakan stok untuk audit trail
+          await tx.stockHistory.create({
+            data: {
+              id_product: detail.id_product,
+              id_merchant: transaction.id_merchant,
+              id_user: user.sub,
+              id_transaction: transaction.id_transaction,
+              movement_type: 'SALE',
+              quantity: -detail.quantity,
+              notes: `Forced resolve by OWNER (conflict resolution). ${dto.notes ?? ''}`.trim(),
+            },
+          });
+        }
 
-        return { message: 'Conflict resolved: transaction CONFIRMED', data: resolved };
+        const resolved = await tx.transaction.update({
+          where: { id_transaction: transaction.id_transaction },
+          data: {
+            status: TransactionStatus.CONFIRMED,
+            sync_status: SyncStatus.SYNCED,
+            confirmed_at: new Date(),
+          },
+        });
+
+        // Update catatan rekonsiliasi pada payment
+        if (transaction.payment) {
+          await tx.payment.update({
+            where: { id_payment: transaction.payment.id_payment },
+            data: {},
+          });
+        }
+
+        return {
+          message: 'Conflict resolved: transaction CONFIRMED',
+          data: resolved,
+        };
       });
     } else {
-      // VOID
+      // 3b. VOID: Batalkan transaksi konflik tanpa memengaruhi stok
       const resolved = await this.prisma.transaction.update({
         where: { id_transaction: transaction.id_transaction },
         data: {
@@ -125,60 +175,185 @@ export class TransactionsService {
         },
       });
 
-      return { message: 'Conflict resolved: transaction VOIDED', data: resolved };
+      return {
+        message: 'Conflict resolved: transaction VOIDED',
+        data: resolved,
+      };
     }
   }
 
   async correctTransaction(user: JwtPayload, id: string, dto: CorrectTransactionDto) {
-    const originalTx = await this.findOne(user, id);
+    // 1. Ambil transaksi asli beserta semua relasinya
+    const originalTx = await this.prisma.transaction.findFirst({
+      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+      include: { details: true, payment: true },
+    });
 
-    if (originalTx.status !== TransactionStatus.CONFIRMED) {
-      throw new BadRequestException(`Only CONFIRMED transactions can be corrected.`);
-    }
-
-    return await this.prisma.$transaction(async (tx) => {
-      await this.revertOldStock(tx, originalTx, user.sub, dto.reason);
-
-      const newTx = await this.createNewTransaction(tx, originalTx, dto);
-
-      await this.createDetailsAndDeductStock(tx, newTx, dto, user.sub);
-
-      await this.clonePayment(tx, originalTx, newTx.id_transaction, dto.total);
-
-      await this.markOldAsVoidedAndBridge(
-        tx,
-        originalTx.id_transaction,
-        newTx.id_transaction,
-        user.sub,
-        dto.reason,
+    if (!originalTx) throw new NotFoundException(`Transaction with ID ${id} not found in DB`);
+    if (originalTx.id_merchant !== user.id_merchant)
+      throw new NotFoundException(
+        `Merchant mismatch: ${originalTx.id_merchant} vs ${user.id_merchant}`,
       );
 
-      return {
-        message: 'Transaction successfully corrected',
+    // 2. Hanya transaksi CONFIRMED yang bisa dikoreksi
+    if (originalTx.status !== TransactionStatus.CONFIRMED) {
+      throw new BadRequestException(
+        `Only CONFIRMED transactions can be corrected. Current status: ${originalTx.status}`,
+      );
+    }
+
+    // 3. Jalankan semua operasi dalam satu Prisma $transaction (atomik)
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 3a. REVERT stok lama — kembalikan stok ke kondisi sebelum transaksi ini
+      for (const oldDetail of originalTx.details) {
+        await tx.inventory.update({
+          where: { id_product: oldDetail.id_product },
+          data: { current_stock: { increment: oldDetail.quantity } },
+        });
+
+        await tx.stockHistory.create({
+          data: {
+            id_product: oldDetail.id_product,
+            id_merchant: originalTx.id_merchant,
+            id_user: user.sub,
+            id_transaction: originalTx.id_transaction,
+            movement_type: 'CORRECTION',
+            quantity: oldDetail.quantity, // Positif = stok dikembalikan
+            notes: `Stock reverted for transaction correction. Reason: ${dto.reason}`,
+          },
+        });
+      }
+
+      // 3b. Buat transaksi BARU sebagai pengganti
+      const newTx = await tx.transaction.create({
+        data: {
+          id_merchant: originalTx.id_merchant,
+          id_user: originalTx.id_user,
+          id_device: originalTx.id_device,
+          subtotal: dto.subtotal,
+          total: dto.total,
+          notes: dto.notes ?? originalTx.notes,
+          status: TransactionStatus.CONFIRMED,
+          sync_status: SyncStatus.SYNCED,
+          confirmed_at: new Date(),
+          created_at_local: originalTx.created_at_local,
+        },
+      });
+
+      // 3c. Buat detail item baru
+      await tx.detailTransaction.createMany({
+        data: dto.items.map((item) => ({
+          id_transaction: newTx.id_transaction,
+          id_product: item.id_product,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          subtotal: item.subtotal,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+          product_name: (item as any).product_name ?? 'Correction',
+          sku_snapshot: 'NONE',
+          catalog_version: new Date(),
+        })),
+      });
+
+      // 3d. Potong stok baru & catat history
+      for (const item of dto.items) {
+        await tx.inventory.update({
+          where: { id_product: item.id_product },
+          data: { current_stock: { decrement: item.quantity } },
+        });
+
+        await tx.stockHistory.create({
+          data: {
+            id_product: item.id_product,
+            id_merchant: originalTx.id_merchant,
+            id_user: user.sub,
+            id_transaction: newTx.id_transaction,
+            movement_type: 'CORRECTION',
+            quantity: -item.quantity, // Negatif = stok dipotong
+            notes: `New stock deduction after correction. Reason: ${dto.reason}`,
+          },
+        });
+      }
+
+      // 3e. Salin (clone) payment dari transaksi lama ke transaksi baru,
+      //     update amount jika total berubah
+      if (originalTx.payment) {
+        await tx.payment.create({
+          data: {
+            id_transaction: newTx.id_transaction,
+            id_merchant: originalTx.id_merchant,
+            amount: dto.total,
+            method: originalTx.payment.method,
+            status: originalTx.payment.status,
+            cash_received: originalTx.payment.cash_received,
+            change_amount: originalTx.payment.change_amount,
+            qris_code: originalTx.payment.qris_code,
+            transfer_ref: originalTx.payment.transfer_ref,
+            verified_at: originalTx.payment.verified_at,
+            verified_by: originalTx.payment.verified_by,
+          },
+        });
+      }
+
+      // 3f. Tandai transaksi LAMA sebagai VOIDED (immutable — tidak dihapus)
+      await tx.transaction.update({
+        where: { id_transaction: originalTx.id_transaction },
+        data: {
+          status: TransactionStatus.VOIDED,
+          voided_at: new Date(),
+          voided_by: user.sub,
+          void_reason: `Corrected. Reason: ${dto.reason}. New transaction: ${newTx.id_transaction}`,
+        },
+      });
+
+      // 3g. Buat jembatan Immutable Bridge: TransactionCorrection
+      const correction = await tx.transactionCorrection.create({
         data: {
           id_old_transaction: originalTx.id_transaction,
           id_new_transaction: newTx.id_transaction,
           corrected_by: user.sub,
           reason: dto.reason,
         },
+      });
+
+      return {
+        message: 'Transaction successfully corrected',
+        data: {
+          id_correction: correction.id_correction,
+          id_old_transaction: correction.id_old_transaction,
+          id_new_transaction: correction.id_new_transaction,
+          corrected_by: correction.corrected_by,
+          reason: correction.reason,
+          created_at: correction.created_at,
+        },
       };
     });
+
+    return result;
   }
 
-  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
   async getTransactionHistory(user: JwtPayload, id: string) {
-    const initialTx = await this.findOne(user, id);
-    let rootId = initialTx.id_transaction;
+    // 1. Find any node in the chain
+    const initialTx = await this.prisma.transaction.findFirst({
+      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+    });
 
+    if (!initialTx || initialTx.id_merchant !== user.id_merchant) {
+      throw new NotFoundException(`Transaction with ID ${id} not found`);
+    }
+
+    // 2. Trace BACKWARDS to find the ROOT transaction
+    let rootId = initialTx.id_transaction;
     while (true) {
-      const prev = await this.prisma.transactionCorrection.findFirst({
+      const prevCorrection = await this.prisma.transactionCorrection.findFirst({
         where: { id_new_transaction: rootId },
         select: { id_old_transaction: true },
       });
-      if (!prev) break;
-      rootId = prev.id_old_transaction;
+      if (!prevCorrection) break;
+      rootId = prevCorrection.id_old_transaction;
     }
 
+    // 3. Trace FORWARDS from the ROOT to build the full chain
     const history = [];
     let currentId: string | null = rootId;
 
@@ -190,8 +365,14 @@ export class TransactionsService {
 
       if (!tx) break;
 
-      const nextCorrection: any = await this.prisma.transactionCorrection.findFirst({
+      const nextCorrection: {
+        id_new_transaction: string;
+        reason: string;
+        created_at: Date;
+        corrected_by: string;
+      } | null = await this.prisma.transactionCorrection.findFirst({
         where: { id_old_transaction: currentId },
+        select: { id_new_transaction: true, reason: true, created_at: true, corrected_by: true },
       });
 
       history.push({
@@ -209,162 +390,5 @@ export class TransactionsService {
     }
 
     return history;
-  }
-
-  /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
-
-  private async forceResolveInventory(
-    tx: Prisma.TransactionClient,
-    transaction: any,
-    userId: string,
-    notes?: string,
-  ) {
-    for (const detail of transaction.details) {
-      await adjustInventoryAndHistory(tx, {
-        id_product: detail.id_product,
-        id_merchant: transaction.id_merchant,
-        id_user: userId,
-        id_transaction: transaction.id_transaction,
-        quantity_change: -detail.quantity, // Deduct
-        movement_type: 'SALE',
-        notes: `Forced resolve by OWNER (conflict resolution). ${notes ?? ''}`.trim(),
-      });
-    }
-  }
-
-  private async markAsConfirmed(tx: Prisma.TransactionClient, transactionId: string) {
-    return await tx.transaction.update({
-      where: { id_transaction: transactionId },
-      data: {
-        status: TransactionStatus.CONFIRMED,
-        sync_status: SyncStatus.SYNCED,
-        confirmed_at: new Date(),
-      },
-    });
-  }
-
-  private async revertOldStock(
-    tx: Prisma.TransactionClient,
-    originalTx: any,
-    userId: string,
-    reason: string,
-  ) {
-    for (const oldDetail of originalTx.details) {
-      await adjustInventoryAndHistory(tx, {
-        id_product: oldDetail.id_product,
-        id_merchant: originalTx.id_merchant,
-        id_user: userId,
-        id_transaction: originalTx.id_transaction,
-        quantity_change: oldDetail.quantity, // Increment back
-        movement_type: 'CORRECTION',
-        notes: `Stock reverted for transaction correction. Reason: ${reason}`,
-      });
-    }
-  }
-
-  private async createNewTransaction(
-    tx: Prisma.TransactionClient,
-    originalTx: Transaction,
-    dto: CorrectTransactionDto,
-  ) {
-    return await tx.transaction.create({
-      data: {
-        id_merchant: originalTx.id_merchant,
-        id_user: originalTx.id_user,
-        id_device: originalTx.id_device,
-        subtotal: dto.subtotal,
-        total: dto.total,
-        notes: dto.notes ?? originalTx.notes,
-        status: TransactionStatus.CONFIRMED,
-        sync_status: SyncStatus.SYNCED,
-        confirmed_at: new Date(),
-        created_at_local: originalTx.created_at_local,
-      },
-    });
-  }
-
-  private async createDetailsAndDeductStock(
-    tx: Prisma.TransactionClient,
-    newTx: Transaction,
-    dto: CorrectTransactionDto,
-    userId: string,
-  ) {
-    await tx.detailTransaction.createMany({
-      data: dto.items.map((item) => ({
-        id_transaction: newTx.id_transaction,
-        id_product: item.id_product,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        subtotal: item.subtotal,
-
-        product_name: (item as any).product_name ?? 'Correction',
-        sku_snapshot: 'NONE',
-        catalog_version: new Date(),
-      })),
-    });
-
-    for (const item of dto.items) {
-      await adjustInventoryAndHistory(tx, {
-        id_product: item.id_product,
-        id_merchant: newTx.id_merchant,
-        id_user: userId,
-        id_transaction: newTx.id_transaction,
-        quantity_change: -item.quantity, // Deduct new stock
-        movement_type: 'CORRECTION',
-        notes: `New stock deduction after correction. Reason: ${dto.reason}`,
-      });
-    }
-  }
-
-  private async clonePayment(
-    tx: Prisma.TransactionClient,
-    originalTx: any,
-    newTransactionId: string,
-    newTotal: number,
-  ) {
-    if (originalTx.payment) {
-      await tx.payment.create({
-        data: {
-          id_transaction: newTransactionId,
-          id_merchant: originalTx.id_merchant,
-          amount: newTotal,
-          method: originalTx.payment.method,
-          status: originalTx.payment.status,
-          cash_received: originalTx.payment.cash_received,
-          change_amount: originalTx.payment.change_amount,
-          qris_code: originalTx.payment.qris_code,
-          transfer_ref: originalTx.payment.transfer_ref,
-          verified_at: originalTx.payment.verified_at,
-          verified_by: originalTx.payment.verified_by,
-        },
-      });
-    }
-  }
-
-  private async markOldAsVoidedAndBridge(
-    tx: Prisma.TransactionClient,
-    oldId: string,
-    newId: string,
-    userId: string,
-    reason: string,
-  ) {
-    await tx.transaction.update({
-      where: { id_transaction: oldId },
-      data: {
-        status: TransactionStatus.VOIDED,
-        voided_at: new Date(),
-        voided_by: userId,
-        void_reason: `Corrected. Reason: ${reason}. New transaction: ${newId}`,
-      },
-    });
-
-    await tx.transactionCorrection.create({
-      data: {
-        id_old_transaction: oldId,
-        id_new_transaction: newId,
-        corrected_by: userId,
-        reason: reason,
-      },
-    });
   }
 }

@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -18,8 +17,8 @@ import { ReconciliationsModule } from './modules/reconciliations/reconciliations
 
 @Module({
   imports: [
+    // Harus ada di paling atas agar env sudah tersedia sebelum module lain init
     ConfigModule.forRoot({ isGlobal: true }),
-    PrometheusModule.register(),
     PrismaModule,
     AuthModule,
     UsersModule,

@@ -4,7 +4,6 @@ import { SyncItemDto, SyncTransactionDto } from './dto/sync-batch.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SyncStatus, TransactionStatus, PaymentStatus } from '../../../generated/prisma/client';
 import { SyncProducerService } from './sync-producer.service';
-import { SyncConflictException } from '../../common/exceptions/sync-conflict.exception';
 import * as amqp from 'amqp-connection-manager';
 
 /** RabbitMQ channel interface (channel-api). */
@@ -42,19 +41,21 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       setup: async (channel: any) => {
         await channel.assertQueue('sync.dlq', { durable: true });
 
+        // Manual consumption of sync.dlq to bypass NestJS single-queue limitation
         await channel.consume('sync.dlq', async (msg: any) => {
           if (!msg) return;
           try {
             const rawContent = msg.content.toString();
             this.logger.debug(`Raw DLQ message: ${rawContent.substring(0, 500)}`);
             const content = JSON.parse(rawContent);
+            // NestJS envelope formats data as { pattern, data } or fallback directly
             const transactions = content.data || content;
             await this.handleDlqMessage(transactions);
             channel.ack(msg);
           } catch (err: unknown) {
             const error = err instanceof Error ? err.message : String(err);
             this.logger.error(`Error in manual DLQ consumer: ${error}`);
-            channel.nack(msg, false, false);
+            channel.nack(msg, false, false); // Nack without requeue
           }
         });
       },
@@ -71,6 +72,9 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Main consumer — sync.transactions
+  // ──────────────────────────────────────────────────────────────────────────
   @EventPattern('sync_transaction_batch')
   async handleSyncTransactionBatch(
     @Payload() transactions: (SyncTransactionDto & { id_device: string })[],
@@ -82,8 +86,10 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
     const startTime = performance.now();
     this.logger.log(`Received batch of ${transactions.length} transactions for processing.`);
 
+    // Process each transaction individually for per-item DLQ isolation
     for (const data of transactions) {
       try {
+        // Idempotency check: skip if already exists
         const existing = await this.prisma.transaction.findUnique({
           where: {
             id_device_offline_uuid: {
@@ -112,6 +118,9 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
     channel.ack(originalMsg);
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // DLQ Message Processor
+  // ──────────────────────────────────────────────────────────────────────────
   async handleDlqMessage(
     transactions: (SyncTransactionDto & { id_device: string; _retryAttempt?: number })[],
   ) {
@@ -120,6 +129,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    // Filter out invalid items
     const validTransactions = transactions.filter(
       (t) => t && typeof t === 'object' && t.offline_uuid && t.id_device,
     );
@@ -179,17 +189,21 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Private helpers
+  // ──────────────────────────────────────────────────────────────────────────
+
   private async processTransaction(
     data: SyncTransactionDto & { id_device: string },
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       let hasConflict = false;
 
+      // 1. Arithmetic validation
       let calculatedSubtotal = 0;
       for (const item of data.items) {
         if (Number(item.quantity) * Number(item.unit_price) !== Number(item.subtotal)) {
-          throw new SyncConflictException(
-            'SYNC_ARITHMETIC_ERROR',
+          throw new Error(
             `Arithmetic validation failed for item ${item.id_product}: ` +
               `${item.quantity} * ${item.unit_price} != ${item.subtotal}`,
           );
@@ -200,12 +214,12 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         calculatedSubtotal !== Number(data.subtotal) ||
         calculatedSubtotal !== Number(data.total)
       ) {
-        throw new SyncConflictException(
-          'SYNC_ARITHMETIC_ERROR',
+        throw new Error(
           `Arithmetic validation failed: calculated ${calculatedSubtotal} != tx total ${data.total}`,
         );
       }
 
+      // 2. Stock check via SELECT FOR UPDATE
       for (const item of data.items) {
         const inventoryData = await tx.$queryRaw<InventoryData[]>`
           SELECT i.current_stock, p.is_active
@@ -230,18 +244,17 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       const finalStatus = hasConflict ? TransactionStatus.PENDING : TransactionStatus.CONFIRMED;
       const finalSyncStatus = hasConflict ? SyncStatus.SYNC_CONFLICT : SyncStatus.SYNCED;
 
+      // 3. Verify device exists
       const device = await tx.device.findUnique({
         where: { id_device: data.id_device },
         include: { merchant: true },
       });
 
       if (!device) {
-        throw new SyncConflictException(
-          'SYNC_CONSTRAINT_VIOLATION',
-          `Device ${data.id_device} not found.`,
-        );
+        throw new Error(`Device ${data.id_device} not found.`);
       }
 
+      // 4. Create Transaction header
       const newTx = await tx.transaction.create({
         data: {
           id_merchant: device.id_merchant,
@@ -260,6 +273,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
+      // 5. Create Detail rows (with snapshot fields)
       await tx.detailTransaction.createMany({
         data: data.items.map((item: SyncItemDto) => ({
           id_transaction: newTx.id_transaction,
@@ -273,6 +287,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         })),
       });
 
+      // 6. Create Payment (ADR-001: trust-first — always VERIFIED)
       await tx.payment.create({
         data: {
           id_transaction: newTx.id_transaction,
@@ -288,6 +303,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
+      // 7. Decrement stock & write history (only for non-conflict)
       if (!hasConflict) {
         for (const item of data.items) {
           await tx.inventory.update({
@@ -316,38 +332,21 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
     error: Error,
   ): Promise<void> {
     try {
-      let errorPayload: string;
-
-      if (error instanceof SyncConflictException) {
-        const response = error.getResponse();
-        errorPayload = JSON.stringify(response);
-      } else {
-        const cleanMessage =
-          error.message
-            .split('\n')
-            .filter((line) => line.trim().length > 0)
-            .pop() || error.message;
-
-        let fallbackCode = 'SYNC_UNKNOWN_ERROR';
-        if (cleanMessage.includes('Foreign key constraint violated')) {
-          fallbackCode = 'SYNC_CONSTRAINT_VIOLATION';
-        }
-
-        errorPayload = JSON.stringify({
-          status: 'error',
-          code: fallbackCode,
-          message: cleanMessage,
-        });
-      }
+      // Prisma error messages often include verbose query snippets. We extract only the actual error cause.
+      const cleanMessage =
+        error.message
+          .split('\n')
+          .filter((line) => line.trim().length > 0)
+          .pop() || error.message;
 
       await this.prisma.syncQueue.create({
         data: {
           id_device: data.id_device,
-          id_transaction: null,
+          id_transaction: null, // No Transaction row exists yet (failed before DB write)
           offline_uuid: data.offline_uuid,
           operation: 'SYNC_BATCH_REJECTED',
           payload: JSON.stringify(data),
-          last_error: errorPayload,
+          last_error: cleanMessage,
           status: SyncStatus.SYNC_FAILED,
         },
       });
