@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseStorageService } from '../../storage/supabase-storage.service';
 import { MulterFile } from '../../common/types/multer-file';
 import type { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { adjustInventoryAndHistory } from '../../common/utils/inventory.util';
 
 @Injectable()
 export class ProductsService {
@@ -211,22 +212,23 @@ export class ProductsService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const updatedInventory = await tx.inventory.update({
-        where: { id_inventory: inv.id_inventory },
-        data: {
-          current_stock: newStock,
-        },
+      await adjustInventoryAndHistory(tx, {
+        id_product: product.id_product,
+        id_merchant: user.id_merchant,
+        id_user: user.sub,
+        id_transaction: null,
+        quantity_change: dto.quantity,
+        movement_type: 'ADJUSTMENT',
+        notes: dto.notes ?? 'Manual stock adjustment',
       });
 
-      const stockHistory = await tx.stockHistory.create({
-        data: {
-          id_product: product.id_product,
-          id_merchant: user.id_merchant,
-          id_user: user.sub,
-          movement_type: 'ADJUSTMENT',
-          quantity: dto.quantity,
-          notes: dto.notes,
-        },
+      // Fetch the updated inventory and history to return
+      const updatedInventory = await tx.inventory.findUnique({
+        where: { id_inventory: inv.id_inventory },
+      });
+      const stockHistory = await tx.stockHistory.findFirst({
+        where: { id_product: product.id_product, id_merchant: user.id_merchant },
+        orderBy: { created_at: 'desc' },
       });
 
       return { updatedInventory, stockHistory };
@@ -235,7 +237,7 @@ export class ProductsService {
     return {
       id_product: product.id_product,
       previous_stock: previousStock,
-      current_stock: result.updatedInventory.current_stock,
+      current_stock: result.updatedInventory!.current_stock,
       stock_history: result.stockHistory,
     };
   }
