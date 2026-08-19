@@ -37,9 +37,7 @@ export class TransactionsService {
       take: limit + 1,
       cursor: cursor ? { id_transaction: cursor } : undefined,
       orderBy: { created_at: 'desc' },
-      include: { details: true,
-        payment: true,
-      },
+      include: { details: true, payment: true },
     });
 
     let next_cursor: string | null = null;
@@ -58,10 +56,9 @@ export class TransactionsService {
   }
 
   async findOne(user: JwtPayload, id: string) {
-    const transaction = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
-      include: { details: true,
-        payment: true,
-      },
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+      include: { details: true, payment: true },
     });
 
     if (!transaction || transaction.id_merchant !== user.id_merchant) {
@@ -102,7 +99,8 @@ export class TransactionsService {
 
   async resolveConflict(user: JwtPayload, id: string, dto: ResolveConflictDto) {
     // 1. Ambil transaksi beserta detail dan payment-nya
-    const transaction = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
       include: { details: true, payment: true },
     });
 
@@ -186,11 +184,17 @@ export class TransactionsService {
 
   async correctTransaction(user: JwtPayload, id: string, dto: CorrectTransactionDto) {
     // 1. Ambil transaksi asli beserta semua relasinya
-    const originalTx = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+    const originalTx = await this.prisma.transaction.findFirst({
+      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
       include: { details: true, payment: true },
     });
 
-    if (!originalTx) throw new NotFoundException(`Transaction with ID ${id} not found in DB`); if (originalTx.id_merchant !== user.id_merchant) throw new NotFoundException(`Merchant mismatch: ${originalTx.id_merchant} vs ${user.id_merchant}`); if (false) {
+    if (!originalTx) throw new NotFoundException(`Transaction with ID ${id} not found in DB`);
+    if (originalTx.id_merchant !== user.id_merchant)
+      throw new NotFoundException(
+        `Merchant mismatch: ${originalTx.id_merchant} vs ${user.id_merchant}`,
+      );
+    if (false) {
       throw new NotFoundException(`Transaction with ID ${id} not found`);
     }
 
@@ -328,5 +332,59 @@ export class TransactionsService {
     });
 
     return result;
+  }
+
+  async getTransactionHistory(user: JwtPayload, id: string) {
+    // 1. Find any node in the chain
+    const initialTx = await this.prisma.transaction.findFirst({
+      where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+    });
+
+    if (!initialTx || initialTx.id_merchant !== user.id_merchant) {
+      throw new NotFoundException(`Transaction with ID ${id} not found`);
+    }
+
+    // 2. Trace BACKWARDS to find the ROOT transaction
+    let rootId = initialTx.id_transaction;
+    while (true) {
+      const prevCorrection = await this.prisma.transactionCorrection.findFirst({
+        where: { id_new_transaction: rootId },
+        select: { id_old_transaction: true },
+      });
+      if (!prevCorrection) break;
+      rootId = prevCorrection.id_old_transaction;
+    }
+
+    // 3. Trace FORWARDS from the ROOT to build the full chain
+    const history = [];
+    let currentId: string | null = rootId;
+
+    while (currentId) {
+      const tx = await this.prisma.transaction.findUnique({
+        where: { id_transaction: currentId },
+        include: { details: true, payment: true },
+      });
+
+      if (!tx) break;
+
+      const nextCorrection = await this.prisma.transactionCorrection.findFirst({
+        where: { id_old_transaction: currentId },
+      });
+
+      history.push({
+        transaction: tx,
+        correction_metadata: nextCorrection
+          ? {
+              reason: nextCorrection.reason,
+              corrected_at: nextCorrection.corrected_at,
+              corrected_by: nextCorrection.corrected_by,
+            }
+          : null,
+      });
+
+      currentId = nextCorrection ? nextCorrection.id_new_transaction : null;
+    }
+
+    return history;
   }
 }

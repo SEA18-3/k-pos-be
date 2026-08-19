@@ -36,6 +36,15 @@ export class TransactionsController {
     return this.transactionsService.findOne(user, id);
   }
 
+  @Get(':id/history')
+  @Roles(Role.OWNER, Role.OPERATOR)
+  @ApiOperation({ summary: 'Dapatkan riwayat rantai koreksi transaksi' })
+  @ApiResponse({ status: 200, description: 'Mengembalikan array riwayat transaksi.' })
+  @ApiResponse({ status: 404, description: 'Transaksi tidak ditemukan.' })
+  getTransactionHistory(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.transactionsService.getTransactionHistory(user, id);
+  }
+
   @Patch(':id/void')
   @Roles(Role.OWNER, Role.OPERATOR)
   @ApiOperation({ summary: 'Void / batalkan transaksi PENDING' })
