@@ -9,8 +9,13 @@ export class ReconciliationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(user: JwtPayload, createDto: CreateReconciliationDto) {
-    const transaction = await this.prisma.transaction.findUnique({
-      where: { id_transaction: createDto.id_transaction },
+    const transaction = await this.prisma.transaction.findFirst({
+      where: {
+        OR: [
+          { id_transaction: createDto.id_transaction },
+          { offline_uuid: createDto.id_transaction }
+        ]
+      },
       include: { payment: true },
     });
 
@@ -140,3 +145,4 @@ export class ReconciliationsService {
     });
   }
 }
+

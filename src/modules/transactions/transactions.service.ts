@@ -37,7 +37,7 @@ export class TransactionsService {
       take: limit + 1,
       cursor: cursor ? { id_transaction: cursor } : undefined,
       orderBy: { created_at: 'desc' },
-      include: {
+      include: { details: true,
         payment: true,
       },
     });
@@ -58,10 +58,8 @@ export class TransactionsService {
   }
 
   async findOne(user: JwtPayload, id: string) {
-    const transaction = await this.prisma.transaction.findUnique({
-      where: { id_transaction: id },
-      include: {
-        details: true,
+    const transaction = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
+      include: { details: true,
         payment: true,
       },
     });
@@ -104,8 +102,7 @@ export class TransactionsService {
 
   async resolveConflict(user: JwtPayload, id: string, dto: ResolveConflictDto) {
     // 1. Ambil transaksi beserta detail dan payment-nya
-    const transaction = await this.prisma.transaction.findUnique({
-      where: { id_transaction: id },
+    const transaction = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
       include: { details: true, payment: true },
     });
 
@@ -189,12 +186,11 @@ export class TransactionsService {
 
   async correctTransaction(user: JwtPayload, id: string, dto: CorrectTransactionDto) {
     // 1. Ambil transaksi asli beserta semua relasinya
-    const originalTx = await this.prisma.transaction.findUnique({
-      where: { id_transaction: id },
+    const originalTx = await this.prisma.transaction.findFirst({ where: { OR: [{ id_transaction: id }, { offline_uuid: id }] },
       include: { details: true, payment: true },
     });
 
-    if (!originalTx || originalTx.id_merchant !== user.id_merchant) {
+    if (!originalTx) throw new NotFoundException(`Transaction with ID ${id} not found in DB`); if (originalTx.id_merchant !== user.id_merchant) throw new NotFoundException(`Merchant mismatch: ${originalTx.id_merchant} vs ${user.id_merchant}`); if (false) {
       throw new NotFoundException(`Transaction with ID ${id} not found`);
     }
 
@@ -251,7 +247,7 @@ export class TransactionsService {
           quantity: item.quantity,
           unit_price: item.unit_price,
           subtotal: item.subtotal,
-          product_name: 'Correction',
+          product_name: (item as any).product_name ?? 'Correction',
           sku_snapshot: 'NONE',
           catalog_version: new Date(),
         })),
