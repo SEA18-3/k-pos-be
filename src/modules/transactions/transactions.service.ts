@@ -85,7 +85,7 @@ export class TransactionsService {
     }
 
     const updatedTransaction = await this.prisma.transaction.update({
-      where: { id_transaction: id },
+      where: { id_transaction: transaction.id_transaction },
       data: {
         status: 'VOIDED',
         voided_at: new Date(),
@@ -143,7 +143,7 @@ export class TransactionsService {
         }
 
         const resolved = await tx.transaction.update({
-          where: { id_transaction: id },
+          where: { id_transaction: transaction.id_transaction },
           data: {
             status: TransactionStatus.CONFIRMED,
             sync_status: SyncStatus.SYNCED,
@@ -167,7 +167,7 @@ export class TransactionsService {
     } else {
       // 3b. VOID: Batalkan transaksi konflik tanpa memengaruhi stok
       const resolved = await this.prisma.transaction.update({
-        where: { id_transaction: id },
+        where: { id_transaction: transaction.id_transaction },
         data: {
           status: TransactionStatus.VOIDED,
           sync_status: SyncStatus.SYNCED,
