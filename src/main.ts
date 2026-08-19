@@ -9,16 +9,21 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { WinstonModule } from 'nest-winston';
+import { winstonConfig } from './common/logger/winston.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: WinstonModule.createLogger(winstonConfig),
+  });
   app.use(cookieParser());
 
-  // 1. Global API prefix (health & root excluded)
+  // 1. Global API prefix (health, root, and metrics excluded)
   const apiPrefix = process.env.API_PREFIX || '/api/v1';
   app.setGlobalPrefix(apiPrefix, {
-    exclude: ['health', ''],
+    exclude: ['health', '', 'metrics'],
   });
 
   // 2. Global Validation Pipe
@@ -30,8 +35,8 @@ async function bootstrap() {
     }),
   );
 
-  // 3. Global Response Transform (membungkus semua response sukses)
-  app.useGlobalInterceptors(new TransformInterceptor());
+  // 3. Global Response Transform & Logging
+  app.useGlobalInterceptors(new LoggingInterceptor(), new TransformInterceptor());
 
   // 4. Global Exception Filter (normalisasi semua error response)
   app.useGlobalFilters(new HttpExceptionFilter());
