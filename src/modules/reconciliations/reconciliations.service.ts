@@ -13,8 +13,8 @@ export class ReconciliationsService {
       where: {
         OR: [
           { id_transaction: createDto.id_transaction },
-          { offline_uuid: createDto.id_transaction }
-        ]
+          { offline_uuid: createDto.id_transaction },
+        ],
       },
       include: { payment: true },
     });
@@ -145,4 +145,3 @@ export class ReconciliationsService {
     });
   }
 }
-
