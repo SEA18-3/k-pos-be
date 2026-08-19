@@ -145,7 +145,7 @@ export class TransactionsService {
 
       await this.clonePayment(tx, originalTx, newTx.id_transaction, dto.total);
 
-      await this.markOldAsVoidedAndBridge(
+      const correction = await this.markOldAsVoidedAndBridge(
         tx,
         originalTx.id_transaction,
         newTx.id_transaction,
@@ -156,10 +156,12 @@ export class TransactionsService {
       return {
         message: 'Transaction successfully corrected',
         data: {
-          id_old_transaction: originalTx.id_transaction,
-          id_new_transaction: newTx.id_transaction,
-          corrected_by: user.sub,
-          reason: dto.reason,
+          id_correction: correction.id_correction,
+          id_old_transaction: correction.id_old_transaction,
+          id_new_transaction: correction.id_new_transaction,
+          corrected_by: correction.corrected_by,
+          reason: correction.reason,
+          created_at: correction.created_at,
         },
       };
     });
@@ -358,7 +360,7 @@ export class TransactionsService {
       },
     });
 
-    await tx.transactionCorrection.create({
+    return await tx.transactionCorrection.create({
       data: {
         id_old_transaction: oldId,
         id_new_transaction: newId,
