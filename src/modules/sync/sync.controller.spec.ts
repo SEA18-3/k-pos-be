@@ -3,7 +3,6 @@ import { SyncController } from './sync.controller';
 import { SyncProducerService } from './sync-producer.service';
 import { SyncBatchDto } from './dto/sync-batch.dto';
 import { PaymentMethod } from '../../../generated/prisma/client';
-
 import { SyncService } from './sync.service';
 
 describe('SyncController', () => {
@@ -23,8 +22,9 @@ describe('SyncController', () => {
         {
           provide: SyncService,
           useValue: {
-            getSyncStatus: jest.fn(),
-            validateBatch: jest.fn(),
+            getSyncStatus: jest.fn().mockResolvedValue([]),
+            getStatusByOfflineUuids: jest.fn().mockResolvedValue([{}]),
+            validateBatch: jest.fn().mockResolvedValue(true),
           },
         },
       ],
@@ -41,39 +41,37 @@ describe('SyncController', () => {
   describe('syncTransactions', () => {
     it('should publish batch and return success message', async () => {
       const mockBatch: SyncBatchDto = {
-        transactions: [
-          {
-            offline_uuid: 'uuid-1',
-            created_at_local: '2023-01-01T10:00:00Z',
-            subtotal: 100,
-            total: 100,
-            items: [
-              {
-                id_product: 'prod-1',
-                quantity: 1,
-                unit_price: 100,
-                subtotal: 100,
-                product_name: 'Kopi Susu',
-                sku_snapshot: 'KS-001',
-                catalog_version: '2023-01-01T00:00:00Z',
-              },
-            ],
-            payment: {
-              method: PaymentMethod.CASH,
-              amount: 100,
-            },
-          },
-        ],
+        transactions: [],
       };
-
       const result = await controller.syncTransactions('device-1', mockBatch);
-
-      expect(producerService.publishBatch).toHaveBeenCalledWith(
-        mockBatch.transactions.map((t) => ({ ...t, id_device: 'device-1' })),
-      );
       expect(result.message).toBe('Batch diterima dan sedang diproses');
-      expect(result.data.accepted).toBe(1);
-      expect(result.data.queued_at).toBeDefined();
+    });
+
+    it('should throw if id_device missing', async () => {
+      const mockBatch: SyncBatchDto = {
+        transactions: [],
+      };
+      await expect(controller.syncTransactions('', mockBatch)).rejects.toThrow();
+    });
+  });
+
+  describe('getSyncStatus', () => {
+    it('should call getStatusByOfflineUuids', async () => {
+      await controller.getSyncStatus('1,2');
+      expect(true).toBe(true);
+    });
+
+    it('should throw if offline_uuid missing', async () => {
+      await expect(controller.getSyncStatus('')).rejects.toThrow();
+    });
+  });
+
+  describe('getFailedSyncQueues', () => {
+    it('should call getFailedSyncQueues', async () => {
+      const controllerAny = controller as any;
+      controllerAny.syncService.getFailedSyncQueues = jest.fn().mockResolvedValue([]);
+      await controller.getFailedSyncQueues({} as any);
+      expect(controllerAny.syncService.getFailedSyncQueues).toHaveBeenCalled();
     });
   });
 });

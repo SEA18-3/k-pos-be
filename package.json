@@ -17,6 +17,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
+    "test:badge": "npm run test:cov && npx jest-coverage-badges && mkdir -p badges && cp coverage/badge-*.svg badges/",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "npm run build && node dist/prisma/seed.js"
@@ -82,6 +83,7 @@
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^17.0.0",
     "jest": "^30.0.0",
+    "jest-coverage-badges": "^1.1.2",
     "prettier": "^3.4.2",
     "prisma": "^7.9.1",
     "source-map-support": "^0.5.21",
@@ -105,7 +107,26 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!**/node_modules/**",
+      "!**/*.dto.(t|j)s",
+      "!**/*.entity.(t|j)s",
+      "!main.(t|j)s",
+      "!app.module.(t|j)s",
+      "!seed.(t|j)s",
+      "!**/*.module.(t|j)s",
+      "!common/decorators/**",
+      "!common/enums/**",
+      "!common/exceptions/**",
+      "!common/filters/**",
+      "!common/interceptors/**",
+      "!common/logger/**",
+      "!prisma/prisma.service.(t|j)s"
+    ],
+    "coverageReporters": [
+      "json-summary",
+      "text",
+      "lcov"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",

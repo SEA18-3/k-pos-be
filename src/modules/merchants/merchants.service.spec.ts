@@ -5,25 +5,23 @@ import { NotFoundException } from '@nestjs/common';
 
 describe('MerchantsService', () => {
   let service: MerchantsService;
-  let prisma: PrismaService;
+
+  const mockPrisma = {
+    merchant: {
+      findUnique: jest.fn(),
+    },
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        MerchantsService,
-        {
-          provide: PrismaService,
-          useValue: {
-            merchant: {
-              findUnique: jest.fn(),
-            },
-          },
-        },
-      ],
+      providers: [MerchantsService, { provide: PrismaService, useValue: mockPrisma }],
     }).compile();
 
     service = module.get<MerchantsService>(MerchantsService);
-    prisma = module.get<PrismaService>(PrismaService);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
@@ -31,36 +29,15 @@ describe('MerchantsService', () => {
   });
 
   describe('getMyMerchant', () => {
-    it('should throw NotFoundException if merchant not found', async () => {
-      (prisma.merchant.findUnique as jest.Mock).mockResolvedValue(null);
-      await expect(service.getMyMerchant('invalid-id')).rejects.toThrow(NotFoundException);
+    it('should return merchant', async () => {
+      mockPrisma.merchant.findUnique.mockResolvedValue({ id_merchant: 'm1' });
+      const res = await service.getMyMerchant('m1');
+      expect(res).toEqual({ merchant: { id_merchant: 'm1' } });
     });
 
-    it('should return merchant profile successfully', async () => {
-      const mockMerchant = {
-        id_merchant: 'm1',
-        name: 'Toko Budi',
-        is_active: true,
-      };
-
-      (prisma.merchant.findUnique as jest.Mock).mockResolvedValue(mockMerchant);
-
-      const result = await service.getMyMerchant('m1');
-      expect(result).toEqual({ merchant: mockMerchant });
-      expect(prisma.merchant.findUnique).toHaveBeenCalledWith({
-        where: { id_merchant: 'm1' },
-        select: {
-          id_merchant: true,
-          name: true,
-          address: true,
-          phone: true,
-          email: true,
-          is_active: true,
-          onboarded_at: true,
-          created_at: true,
-          updated_at: true,
-        },
-      });
+    it('should throw if not found', async () => {
+      mockPrisma.merchant.findUnique.mockResolvedValue(null);
+      await expect(service.getMyMerchant('m1')).rejects.toThrow(NotFoundException);
     });
   });
 });

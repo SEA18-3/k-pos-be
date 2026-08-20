@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-unsafe-call */
 import request from 'supertest';
 import * as crypto from 'crypto';
 
 describe('API Integration Flow (e2e)', () => {
-  const baseURL = 'http://localhost:3000'; // Target the running dev server
+  const baseURL = 'http://127.0.0.1:3000'; // Target the running dev server
 
   const ts = Date.now();
   const testEmail = `e2e-jest-${ts}@test.com`;

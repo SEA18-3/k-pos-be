@@ -1,27 +1,25 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MerchantsController } from './merchants.controller';
 import { MerchantsService } from './merchants.service';
-import type { JwtPayload } from '../../common/decorators/current-user.decorator';
 
 describe('MerchantsController', () => {
   let controller: MerchantsController;
-  let service: MerchantsService;
+
+  const mockMerchantsService = {
+    getMyMerchant: jest.fn().mockResolvedValue({ merchant: { id_merchant: 'm1' } }),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MerchantsController],
-      providers: [
-        {
-          provide: MerchantsService,
-          useValue: {
-            getMyMerchant: jest.fn(),
-          },
-        },
-      ],
+      providers: [{ provide: MerchantsService, useValue: mockMerchantsService }],
     }).compile();
 
     controller = module.get<MerchantsController>(MerchantsController);
-    service = module.get<MerchantsService>(MerchantsService);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
@@ -29,15 +27,10 @@ describe('MerchantsController', () => {
   });
 
   describe('getMyMerchant', () => {
-    it('should call getMyMerchant from service', async () => {
-      const user = { sub: 'u1', id_merchant: 'm1' } as unknown as JwtPayload;
-      const mockResult = { merchant: { id_merchant: 'm1', name: 'Toko Budi' } };
-
-      (service.getMyMerchant as jest.Mock).mockResolvedValue(mockResult);
-
-      const result = await controller.getMyMerchant({ user });
-      expect(service.getMyMerchant).toHaveBeenCalledWith('m1');
-      expect(result).toEqual(mockResult);
+    it('should call getMyMerchant on service', async () => {
+      const res = await controller.getMyMerchant({ user: { id_merchant: 'm1' } } as any);
+      expect(res).toEqual({ merchant: { id_merchant: 'm1' } });
+      expect(mockMerchantsService.getMyMerchant).toHaveBeenCalledWith('m1');
     });
   });
 });

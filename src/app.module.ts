@@ -30,10 +30,7 @@ import { ReconciliationsModule } from './modules/reconciliations/reconciliations
       useFactory: (config: ConfigService) => [
         {
           ttl: config.get<number>('THROTTLE_TTL', 60000),
-          limit:
-            process.env.NODE_ENV === 'test'
-              ? 1000
-              : config.get<number>('THROTTLE_LIMIT', 10),
+          limit: process.env.NODE_ENV === 'test' ? 1000 : config.get<number>('THROTTLE_LIMIT', 10),
         },
       ],
     }),
