@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -24,12 +24,19 @@ import { ReconciliationsModule } from './modules/reconciliations/reconciliations
       isGlobal: true,
       envFilePath: '.env',
     }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000,
-        limit: process.env.NODE_ENV === 'test' ? 1000 : 10,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        {
+          ttl: config.get<number>('THROTTLE_TTL', 60000),
+          limit:
+            process.env.NODE_ENV === 'test'
+              ? 1000
+              : config.get<number>('THROTTLE_LIMIT', 10),
+        },
+      ],
+    }),
     PrometheusModule.register({
       path: '/metrics',
       defaultMetrics: {
