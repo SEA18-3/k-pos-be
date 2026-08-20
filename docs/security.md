@@ -2,36 +2,22 @@
 
 Dokumen ini menjelaskan rancangan arsitektur keamanan untuk sistem K-POS, mencakup autentikasi, autorisasi, mitigasi ancaman otomatis, dan keamanan CI/CD, sebagai pemenuhan NFR Keamanan dan kriteria *Security Implementation*.
 
-## 1. Authentication & Authorization (NFR-SEC-01)
+## 1. Authentication & Authorization
 
 Sistem menggunakan **JWT (JSON Web Token)** untuk otentikasi karena sifatnya yang *stateless* dan sangat cocok untuk arsitektur REST API terdistribusi.
 
-- **Password Hashing:** Menggunakan `bcrypt` dengan *salt rounds* 10 untuk mencegah serangan *Rainbow Table* dan *Brute-Force*.
-- **Role-Based Access Control (RBAC):** Memiliki 4 level hierarki:
-  1. `OWNER`: Pemilik toko/merchant.
-  2. `OPERATOR`: Kasir (hanya memiliki akses sinkronisasi transaksi).
-  3. `ENTRY`: Petugas input stok (hanya memiliki akses inventaris).
-  - Pemisahan ini mencegah kasir untuk mengubah harga produk (NFR-SEC-03) atau melakukan rekonsiliasi DLQ.
+- **Access & Refresh Token (NFR-SEC-03):** Access token JWT dibuat berdurasi pendek (15-30 menit) untuk mengurangi risiko kebocoran token. Sistem juga mengimplementasikan mekanisme Refresh Token yang disimpan secara persisten di database (tabel `RefreshToken`). Hal ini memungkinkan fitur pembatalan sesi (*token revocation*) seperti *logout* dari semua perangkat atau pemblokiran akun, yang tidak mungkin dilakukan dengan JWT *stateless* murni. Saat perangkat *offline*, autentikasi menggunakan *session/credential* lokal yang tidak bergantung pada validasi *expiry* secara *real-time*.
+- **Password Hashing (NFR-SEC-01):** Menggunakan `bcrypt` dengan *salt rounds* 10 untuk melakukan *secure hashing* pada password pengguna, mencegah serangan *Rainbow Table* dan *Brute-Force*.
+- **Role-Based Access Control (RBAC):** Memiliki 4 level hierarki (`OWNER`, `OPERATOR`, `ENTRY`) untuk mencegah ekskalasi hak akses (misalnya mencegah kasir mengubah harga produk).
 
-## 2. API Protection & Mitigasi Ancaman (NFR-SEC-02)
+## 2. API Protection & Mitigasi Ancaman
 
-- **Rate Limiting (Throttler):**
-  - Menggunakan `@nestjs/throttler`. Endpoint sensitif seperti `POST /auth/login` dibatasi maksimal 5 permintaan per menit per IP untuk mencegah *Brute-Force Attack*.
-- **Data Sanitization & Validation:**
-  - Menggunakan `class-validator` di seluruh DTO. Semua input dari Frontend divaksinasi menggunakan `ValidationPipe(whitelist: true, forbidNonWhitelisted: true)`. Ini mencegah serangan *Payload Injection* dan *Over-posting*.
-
-### E. Pencegahan Serangan Eksternal (NFR-SEC-05 & NFR-SEC-06)
-- **Helmet**: Secara otomatis mengatur *HTTP Security Headers* untuk mencegah XSS (*Cross-Site Scripting*), MIME sniffing, dan serangan injeksi *client-side* lainnya. Diaktifkan secara global melalui `app.use(helmet())`.
-- **Throttler (Rate Limiting)**: Mencegah serangan *Brute-force* pada *endpoint* publik, termasuk login. Diimplementasikan secara global dengan batasan default **10 request per menit per IP**.
+- **Data in Transit (NFR-SEC-02):** Seluruh komunikasi antara aplikasi klien (Kasir) dan backend (termasuk saat sinkronisasi transaksi) wajib menggunakan protokol **HTTPS/TLS** untuk mencegah *Man-in-the-Middle* (MitM) *attack*.
+- **SQL Injection Prevention (NFR-SEC-04):** Sistem menggunakan **Prisma ORM** yang secara otomatis melakukan *parameterized query* untuk seluruh operasi database, sehingga sama sekali tidak ada celah *raw query* langsung dari input pengguna.
+- **XSS Prevention (NFR-SEC-05):** Semua data output ke UI di-sanitasi. Selain itu, backend menggunakan **Helmet** (`app.use(helmet())`) yang mengatur *HTTP Security Headers* secara otomatis untuk mencegah serangan *Cross-Site Scripting* (XSS) dan eksploitasi sejenis.
+- **Brute-Force Protection & Rate Limiting (NFR-SEC-06):** Menggunakan modul `@nestjs/throttler` sebagai pengaman *Rate Limiting* global. Endpoint sensitif seperti `POST /auth/login` dibatasi dengan ketat untuk mencegah serangan penebakan kata sandi secara paksa (*Brute-force attack*).
+- **Data Sanitization & Input Validation (NFR-SEC-07):** Menggunakan `class-validator` di seluruh DTO. Semua *request body* yang masuk dari frontend divalidasi secara ketat menggunakan `ValidationPipe(whitelist: true, forbidNonWhitelisted: true)` untuk membuang parameter tak terduga, mencegah *Payload Injection* dan *Over-posting*.
 
 ## 3. Supply Chain Security (OSSF)
 
-Sistem mengimplementasikan pengamanan kode otomatis di GitHub Actions untuk memastikan kualitas dan integritas repositori:
-
-### A. Semgrep (Static Application Security Testing - SAST)
-- **Implementasi:** *Workflow* Github Actions khusus yang menjalankan pemindaian Semgrep pada setiap *Pull Request*.
-- Semgrep bertindak sebagai pemindai kode statis otomatis. *Tool* ini mendeteksi pola kode rentan (seperti *SQL Injection* atau *Hardcoded Secrets*) sebelum kode digabungkan ke cabang utama. Semgrep terintegrasi langsung di GitHub Actions tanpa memerlukan infrastruktur tambahan.
-
-### B. OpenSSF Scorecard
-- **Implementasi:** Pengecekan otomatis terhadap metrik keamanan repositori standar *Open Source Security Foundation*.
-- Memastikan repositori mematuhi standar *Supply Chain Security*, seperti mencegah penggabungan kode tanpa ulasan (Code Review), kontrol akses, dan pemantauan kerentanan dependensi (memenuhi NFR-SEC-04)/
+Sistem mengimplementasikan pengamanan kode otomatis (*DevSecOps*) di GitHub Actions untuk memastikan integritas repositori melalui **Semgrep (Static Application Security Testing - SAST)**. Melalui *workflow* khusus, pemindaian Semgrep dijalankan pada setiap *Pull Request* sebagai pemindai statis otomatis. Hal ini berfungsi untuk mendeteksi pola kode rentan (seperti *hardcoded secrets*, celah logika, atau kesalahan konfigurasi keamanan) sebelum kode digabungkan ke cabang utama.
