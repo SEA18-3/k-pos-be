@@ -1,99 +1,176 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+<div align="center">
+  
+# K-POS
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+**Sync Without Signal - An Offline-First Point of Sales Backend**
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<img src="./badges/badge-statements.svg" alt="Coverage" />
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+![Coverage](https://img.shields.io/badge/Coverage-92.6%25-brightgreen)
+![NestJS](https://img.shields.io/badge/NestJS-E0234E?logo=nestjs&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?logo=postgresql&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-2D3748?logo=prisma&logoColor=white)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?logo=rabbitmq&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 
-## Description
+[**OpenAPI Docs**](https://k-pos-be.onrender.com/docs) • [**Prometheus Metrics**](https://k-pos-be.onrender.com/metrics)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+</div>
 
-## Project setup
+---
 
-```bash
-$ npm install
+## Case Study Overview
+
+K-POS is a robust Point of Sales (POS) backend tailored for modern retail environments experiencing **unstable internet connectivity**. Traditional cloud-based POS systems completely halt operations when the network goes down. K-POS shifts the paradigm by implementing an **Offline-First Architecture**.
+
+Store operators (cashiers) can continuously process hundreds of transactions, manage carts, and accept local payments without any network signal. Upon reconnection, the system orchestrates a massive burst of offline data syncing. Powered by **RabbitMQ** and a distributed microservice approach, K-POS seamlessly resolves inventory conflicts, prevents race conditions, guarantees idempotency, and maintains strict financial audit trails—ensuring the primary HTTP server remains highly available and unblocked under heavy synchronization loads.
+
+---
+
+## Key Features & Engineering Implementations
+
+1. **Event-Driven Synchronization (RabbitMQ)**
+   Offline batches are ingested via `POST /api/v1/sync` and immediately pushed to a RabbitMQ queue (`sync.transactions`). A dedicated worker consumes the queue, validates mathematical consistency, and executes database transactions sequentially.
+2. **Idempotency & Replay Protection**
+   Every local transaction is bound to a unique `offline_uuid` and `device_id`. If network packet drops cause a client to retry syncing an already processed batch, the system safely ignores it without creating duplicate payments or inventory deductions.
+3. **Conflict Resolution & Reconciliation**
+   If an offline transaction is pushed but the central stock has already been depleted, it enters a `PENDING` conflict state. Store owners can investigate these cases via the Reconciliation API and decide to `CONFIRM` (force deduction) or `VOID` (cancel) the transaction.
+4. **Immutable Audit Trail & Corrections**
+   Mistakes happen, but data mutability is dangerous. Modifying a transaction (`correctTransaction`) actually issues a new `TransactionCorrection` bridge. It restores the old stock, voids the old transaction, clones the payment, and creates a completely new transaction record.
+5. **Role-Based Access Control (RBAC) & Security**
+   Secured via JWT (Access & Refresh tokens) with strict 4-level hierarchy: `ADMIN`, `OWNER`, `OPERATOR` (Cashier), and `ENTRY` (Inventory Manager). Additionally, all inbound requests are guarded by `@nestjs/throttler` (Rate Limiting) and Helmet (Security Headers).
+
+---
+
+## Repository Structure
+
+```text
+k-pos-be/
+├── src/
+│   ├── modules/
+│   │   ├── auth/              # JWT Authentication, Login, Register
+│   │   ├── users/             # RBAC & Employee management
+│   │   ├── merchants/         # Multi-tenancy isolation
+│   │   ├── devices/           # Device pairing & revocation logic
+│   │   ├── products/          # Catalog & Inventory management
+│   │   ├── transactions/      # Sales, Voiding, and Correction logics
+│   │   ├── sync/              # RabbitMQ Producer & Consumer workflows
+│   │   ├── reconciliations/   # Cash drawer & Conflict dispute handling
+│   │   └── payments/          # Payment recording & verification
+│   ├── common/
+│   │   ├── interceptors/      # Global response formatting (status, message, data)
+│   │   ├── filters/           # Global HttpException handling
+│   │   ├── decorators/        # Custom @CurrentUser decorators
+│   │   └── utils/             # DRY utilities (e.g. inventory.util.ts)
+│   └── main.ts                # Application Entry Point
+├── docs/                      # Architectural & Technical Documents
+├── test/                      # Jest e2e & API Integration Tests
+├── prisma/                    # Prisma Schema & PostgreSQL Migrations
+└── docker-compose.yml         # Local Container Infrastructure (DB & Broker)
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## How to Run (Local Development)
 
-# watch mode
-$ npm run start:dev
+### 1. Prerequisites
+- Docker & Docker Compose
+- Node.js v18+
+- npm
 
-# production mode
-$ npm run start:prod
+### 2. Environment Variables
+Create a `.env` file in the root directory based on the following template:
+
+```env
+# Server
+PORT=3000
+API_PREFIX=/api/v1
+CORS_ORIGINS=http://localhost:5173,https://k-pos-app.netlify.app
+
+# Database (PostgreSQL 17)
+DATABASE_URL="postgresql://postgres:password@localhost:5432/kpos_db?schema=public"
+
+# Message Broker (RabbitMQ)
+RABBITMQ_URL="amqp://localhost:5672"
+
+# Security (JWT)
+JWT_SECRET="supersecret_access_key"
+JWT_REFRESH_SECRET="supersecret_refresh_key"
+JWT_EXPIRES_IN="15m"
+JWT_REFRESH_EXPIRES_IN="7d"
 ```
 
-## Run tests
-
+### 3. Start Infrastructure
+Boot up PostgreSQL and RabbitMQ containers:
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+docker-compose up -d
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+### 4. Setup Database
+Install dependencies, generate Prisma Client, and run schema migrations:
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm install
+npx prisma generate
+npx prisma migrate dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 5. Start the Server
+```bash
+# Development watch mode
+npm run start:dev
+```
+*The server will be available at `http://localhost:3000` and Swagger docs at `http://localhost:3000/docs`*
 
-## Resources
+---
 
-Check out a few resources that may come in handy when working with NestJS:
+## Testing
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+The codebase maintains a strict >90% test coverage through isolated Unit Tests (Jest) and End-to-End Tests (Supertest).
 
-## Support
+```bash
+# Run Unit Tests
+npm run test
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+# Run E2E Integration Tests
+npm run test:e2e
+```
 
-## Stay in touch
+---
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Phase Demo (End-to-End Walkthrough)
 
-## License
+To simulate the real-world flow of the K-POS ecosystem locally, follow this exact sequence (testable via Postman, cURL, or the [Swagger UI](http://localhost:3000/docs)):
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+1. **Register Store Owner**
+   - `POST /api/v1/auth/register`
+   - Create a new store tenant. Returns an `OWNER` token.
+2. **Register Cashier**
+   - `POST /api/v1/users` *(Requires OWNER Token)*
+   - Register an employee with the `OPERATOR` role.
+3. **Pair Cashier Device**
+   - `POST /api/v1/devices/pair` *(Requires OWNER Token)*
+   - The Owner generates a pairing session and securely links the physical POS tablet/device to the store.
+4. **Populate Inventory**
+   - `POST /api/v1/products` *(Requires OWNER Token)*
+   - Add master products to the catalog (e.g., SKU: `COF-01`, Name: `Kopi Susu`).
+5. **Process Offline Transactions (Simulate Sync)**
+   - `POST /api/v1/sync` *(Requires Operator Token & `X-Device-ID` Header)*
+   - Push an array of queued offline transactions to the server. The server responds with `202 Accepted` immediately, routing the heavy payload to RabbitMQ.
+6. **Poll Sync Status**
+   - `GET /api/v1/sync/status/:batchId`
+   - Check if the background worker has finished processing the batch (`SYNCED` or `SYNC_CONFLICT`).
+7. **Perform Transaction Correction**
+   - `POST /api/v1/transactions/:id/correct` *(Requires OWNER Token)*
+   - Void an erroneous transaction and replace it with a new one while maintaining strict audit trails.
+
+---
+
+## Documentation Reference
+
+1. [Functional Requirements](./docs/FRD.md)
+2. [Non-Functional Requirements](./docs/NFR.md)
+3. [Architecture Justification](./docs/architecture_justification.md)
+4. [Database Design](./docs/database_design.md)
+5. [Security](./docs/security.md)
+6. [Test Strategy](./docs/test_strategy.md)
+7. [Clean Code Implementation](./docs/clean_code_implementation.md)
+8. [Observability](./docs/observability.md)
+9. [Performance Validation](./docs/performance_validation.md)
