@@ -9,8 +9,13 @@ export class ReconciliationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(user: JwtPayload, createDto: CreateReconciliationDto) {
-    const transaction = await this.prisma.transaction.findUnique({
-      where: { id_transaction: createDto.id_transaction },
+    const transaction = await this.prisma.transaction.findFirst({
+      where: {
+        OR: [
+          { id_transaction: createDto.id_transaction },
+          { offline_uuid: createDto.id_transaction },
+        ],
+      },
       include: { payment: true },
     });
 
@@ -138,5 +143,31 @@ export class ReconciliationsService {
 
       return updatedReconciliation;
     });
+  }
+
+  async getPaymentReconciliations(user: JwtPayload, id_payment: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id_payment },
+      include: { transaction: true },
+    });
+
+    if (!payment || payment.transaction?.id_merchant !== user.id_merchant) {
+      throw new NotFoundException(`Payment with ID ${id_payment} not found or unauthorized`);
+    }
+
+    const history = await this.prisma.reconciliation.findMany({
+      where: { id_payment },
+      orderBy: { created_at: 'desc' },
+      include: {
+        openedByUser: { select: { id_user: true, full_name: true, role: true } },
+        resolvedByUser: { select: { id_user: true, full_name: true, role: true } },
+      },
+    });
+
+    return {
+      payment_id: id_payment,
+      transaction_id: payment.id_transaction,
+      history,
+    };
   }
 }

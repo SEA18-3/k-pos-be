@@ -332,6 +332,13 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
     error: Error,
   ): Promise<void> {
     try {
+      // Prisma error messages often include verbose query snippets. We extract only the actual error cause.
+      const cleanMessage =
+        error.message
+          .split('\n')
+          .filter((line) => line.trim().length > 0)
+          .pop() || error.message;
+
       await this.prisma.syncQueue.create({
         data: {
           id_device: data.id_device,
@@ -339,7 +346,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
           offline_uuid: data.offline_uuid,
           operation: 'SYNC_BATCH_REJECTED',
           payload: JSON.stringify(data),
-          last_error: error.message,
+          last_error: cleanMessage,
           status: SyncStatus.SYNC_FAILED,
         },
       });

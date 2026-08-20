@@ -39,7 +39,7 @@ describe('TransactionsService', () => {
           useValue: {
             transaction: {
               findMany: jest.fn(),
-              findUnique: jest.fn(),
+              findFirst: jest.fn(),
               update: jest.fn(),
             },
           },
@@ -65,7 +65,7 @@ describe('TransactionsService', () => {
         take: 11,
         cursor: undefined,
         orderBy: { created_at: 'desc' },
-        include: { payment: true },
+        include: { details: true, payment: true },
       });
       expect(result.data).toHaveLength(1);
       expect(result.meta.next_cursor).toBeNull();
@@ -74,20 +74,20 @@ describe('TransactionsService', () => {
 
   describe('findOne', () => {
     it('should return a transaction if found and belongs to merchant', async () => {
-      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue(mockTransaction as any);
+      jest.spyOn(prisma.transaction, 'findFirst').mockResolvedValue(mockTransaction as any);
 
       const result = await service.findOne(mockUser, 'trx-1');
       expect(result).toEqual(mockTransaction);
     });
 
     it('should throw NotFoundException if transaction not found', async () => {
-      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue(null);
+      jest.spyOn(prisma.transaction, 'findFirst').mockResolvedValue(null);
 
       await expect(service.findOne(mockUser, 'trx-1')).rejects.toThrow(NotFoundException);
     });
 
     it('should throw NotFoundException if transaction belongs to different merchant', async () => {
-      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+      jest.spyOn(prisma.transaction, 'findFirst').mockResolvedValue({
         ...mockTransaction,
         id_merchant: 'different-merchant',
       } as any);

@@ -25,6 +25,8 @@ import { SyncProducerService } from './sync-producer.service';
 import { SyncService } from './sync.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('sync')
 @Controller('sync')
@@ -109,5 +111,17 @@ Menerima batch transaksi dari perangkat Kasir dan mem-publish-nya ke RabbitMQ se
   async getSyncStatus(@Query('offline_uuid') offline_uuid: string) {
     if (!offline_uuid) throw new BadRequestException('offline_uuid is required');
     return this.syncService.getStatusByOfflineUuids(offline_uuid.split(','));
+  }
+
+  @Get('failed-queues')
+  @Roles('OWNER', 'OPERATOR')
+  @ApiOperation({
+    summary: 'Dapatkan daftar SyncQueue yang gagal (per merchant)',
+    description:
+      'Mengambil semua data sinkronisasi yang berstatus SYNC_FAILED atau SYNC_CONFLICT beserta payload-nya untuk tujuan debugging/tracing.',
+  })
+  @ApiResponse({ status: 200, description: 'Berhasil mengambil data antrean gagal.' })
+  async getFailedSyncQueues(@CurrentUser() user: JwtPayload) {
+    return this.syncService.getFailedSyncQueues(user);
   }
 }

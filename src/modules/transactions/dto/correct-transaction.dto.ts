@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsNumber,
   IsPositive,
+  IsOptional,
   IsString,
   MinLength,
   ValidateNested,
@@ -30,6 +31,11 @@ export class CorrectItemDto {
   @IsNumber()
   @IsPositive()
   subtotal: number;
+
+  @ApiPropertyOptional({ example: 'Kopi Susu', description: 'Nama produk' })
+  @IsOptional()
+  @IsString()
+  product_name?: string;
 }
 
 export class CorrectTransactionDto {
@@ -63,7 +69,9 @@ export class CorrectTransactionDto {
   total: number;
 
   @ApiPropertyOptional({ example: 'Transfer BCA', description: 'Catatan tambahan koreksi' })
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   notes?: string;
 }
+
