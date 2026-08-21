@@ -20,7 +20,7 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   @Get()
-  @Roles(Role.OWNER, Role.OPERATOR)
+  @Roles(Role.OWNER, Role.OPERATOR, Role.ENTRY)
   @ApiOperation({ summary: 'Dapatkan semua transaksi dengan filter dan paginasi' })
   @ApiResponse({ status: 200, description: 'Mengembalikan daftar transaksi.' })
   findAll(@CurrentUser() user: JwtPayload, @Query() query: QueryTransactionsDto) {
@@ -28,7 +28,7 @@ export class TransactionsController {
   }
 
   @Get(':id')
-  @Roles(Role.OWNER, Role.OPERATOR)
+  @Roles(Role.OWNER, Role.OPERATOR, Role.ENTRY)
   @ApiOperation({ summary: 'Dapatkan transaksi berdasarkan ID' })
   @ApiResponse({ status: 200, description: 'Mengembalikan data transaksi.' })
   @ApiResponse({ status: 404, description: 'Transaksi tidak ditemukan.' })
@@ -37,7 +37,7 @@ export class TransactionsController {
   }
 
   @Get(':id/history')
-  @Roles(Role.OWNER, Role.OPERATOR)
+  @Roles(Role.OWNER, Role.OPERATOR, Role.ENTRY)
   @ApiOperation({ summary: 'Dapatkan riwayat rantai koreksi transaksi' })
   @ApiResponse({ status: 200, description: 'Mengembalikan array riwayat transaksi.' })
   @ApiResponse({ status: 404, description: 'Transaksi tidak ditemukan.' })
